@@ -9,7 +9,7 @@ public enum PetRole: Equatable, Sendable {
 public struct PetActor: Identifiable, Sendable {
     public let id: UUID
     public let role: PetRole
-    public let metrics: PetMetrics
+    public internal(set) var metrics: PetMetrics
     public internal(set) var brain: PetBrain
     public internal(set) var body: Body
     public internal(set) var animator = Animator()
@@ -247,6 +247,12 @@ public struct Playground: Sendable {
             friendships.remove(id)
             events.append(.friendshipChanged)
         }
+    }
+
+    /// Swaps a pet's sprite measurements (after it evolved) while keeping everything else about it.
+    public mutating func replaceMetrics(of id: UUID, with metrics: PetMetrics) {
+        guard let i = index(of: id) else { return }
+        pets[i].metrics = metrics
     }
 
     public mutating func setScale(_ scale: CGFloat) {

@@ -8,12 +8,29 @@ public struct PetRecord: Codable, Equatable, Identifiable, Sendable {
     public var displayName: String
     /// Last known feet position; nil means "spawn at the top of the screen".
     public var position: CGPoint?
+    /// Treats eaten since joining (or since the last evolution).
+    public var treatsEaten: Int
 
-    public init(id: UUID = UUID(), spritePath: String, displayName: String, position: CGPoint? = nil) {
+    public init(id: UUID = UUID(), spritePath: String, displayName: String, position: CGPoint? = nil,
+                treatsEaten: Int = 0) {
         self.id = id
         self.spritePath = spritePath
         self.displayName = displayName
         self.position = position
+        self.treatsEaten = treatsEaten
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, spritePath, displayName, position, treatsEaten
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        spritePath = try container.decode(String.self, forKey: .spritePath)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        position = try container.decodeIfPresent(CGPoint.self, forKey: .position)
+        treatsEaten = (try? container.decodeIfPresent(Int.self, forKey: .treatsEaten)) ?? 0
     }
 }
 
