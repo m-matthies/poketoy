@@ -152,6 +152,11 @@ final class PetController: PetViewDelegate {
         window.spriteSnapshot
     }
 
+    /// Saves a task still being typed (PokeToy is quitting).
+    func commitTaskEdit() {
+        taskEditor?.commit()
+    }
+
     /// Opens the task editor right above the pet.
     func editTask() {
         let editor = taskEditor ?? TaskEditorPanel()

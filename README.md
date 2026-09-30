@@ -28,7 +28,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   a notification with a sound, and the pet comes running to the mouse pointer and hops about until you click it (or
   open its menu, or a minute passes). By default breaks start by themselves (a long one after every fourth focus) and
   the next focus waits for you. Pause, skip, stop or start another session from the same menu, or from the pet's entry
-  in the paw menu (which also shows its countdown). Timers keep running across restarts. **Preferences → Pomodoro**:
+  in the paw menu (which also shows its countdown). Timers keep running across restarts, also while PokeToy is closed (Preferences can make them pause instead). **Preferences → Pomodoro**:
   your sessions (rename the built-ins, add your own **work** and **relax** sessions with their lengths — work counts as
   focus), the long-break rhythm, what starts automatically, attention-seeking, notifications and sound.
 - **Stroke** a pet by rubbing the cursor back and forth over it: hearts. Sleeping pets sleep on, happily.

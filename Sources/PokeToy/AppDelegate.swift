@@ -40,6 +40,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        model.save()
+        model.prepareToQuit()
     }
 }

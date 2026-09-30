@@ -81,6 +81,7 @@ final class AppModel {
     private var sessionInactive = false
     private let notifier = Notifier()
     private var lastPomodoroCheck: CFTimeInterval = 0
+    private var lastAliveSaved: CFTimeInterval = 0
     private var hotKeys: [GlobalHotKey] = []
     /// Shortcuts macOS refused because another app already uses them.
     private(set) var unavailableShortcuts: Set<ShortcutAction> = []
@@ -110,6 +111,11 @@ final class AppModel {
     }
 
     func start() {
+        // Timers keep counting while PokeToy is closed, unless set to pause: then each picks up with the time it had left.
+        if !pomodoroOptions.keepRunningWhileClosed, let closedAt = settings.lastAlive {
+            settings.timers = Pomodoro.resumed(settings.timers, closedAt: closedAt, now: Date())
+        }
+        settings.lastAlive = Date()
         // Current pets belong in the Pokédex too (also covers pets from before it tracked them).
         for record in settings.pets { recordInPokedex(record) }
         settings.save(to: .standard)
@@ -364,6 +370,13 @@ final class AppModel {
     /// Adds (or with a negative amount takes off) minutes from a pet's running or paused session.
     func adjustPomodoro(on id: UUID, minutes: Int) {
         updateTimer(for: id) { $0?.adjust(by: Double(minutes * 60), at: Date()) }
+    }
+
+    /// PokeToy is quitting: keeps a task still being typed and notes the time, so timers pause while it's closed.
+    func prepareToQuit() {
+        for view in petViews.values { view.commitTaskEdit() }
+        settings.lastAlive = Date()
+        save()
     }
 
     /// Asks for the task's name in a small field right above the pet.
@@ -1123,6 +1136,12 @@ final class AppModel {
         if tickCount % 60 == 1 {  // once a second is plenty for the clock and accessibility settings
             playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
             playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+        if now - lastAliveSaved >= 30, !settings.timers.isEmpty, !pomodoroOptions.keepRunningWhileClosed {
+            // Noted regularly (not just on quit), so timers also pause over a crash, force quit or power loss.
+            lastAliveSaved = now
+            settings.lastAlive = Date()
+            save()
         }
         if now - lastPomodoroCheck >= 0.25 {
             lastPomodoroCheck = now

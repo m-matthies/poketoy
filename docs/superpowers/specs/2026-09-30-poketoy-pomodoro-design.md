@@ -85,3 +85,11 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
 - `BallAnimationWindow` draws it over the spot with the pet's current sprite (recall) or its idle sprite (release) and
   the Poké Ball pixel art. The pet leaves the playground at once when recalled, and joins it when the release
   animation ends. Return All / Let All Out stagger the pets by 0.18 s. No animation while pets are hidden.
+
+## While PokeToy is closed (added)
+
+- Timers keep counting while the app isn't running (the default, `PomodoroOptions.keepRunningWhileClosed`); a phase
+  that ended meanwhile finishes when the app starts again. Optionally ("Pause timers while PokeToy is closed") they
+  pause instead: `Settings.lastAlive` is noted on quit and every 30 s while a timer exists (covering crashes and power
+  loss), and at launch `Pomodoro.resumed` gives running timers the time they had left then.
+- A task still being typed in the editor above a pet is saved when PokeToy quits.

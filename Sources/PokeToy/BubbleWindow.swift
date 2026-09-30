@@ -255,6 +255,11 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
         finish(save: true)  // clicked elsewhere: keep what was typed
     }
 
+    /// Keeps what's typed if the editor is open (e.g. PokeToy is quitting).
+    func commit() {
+        finish(save: true)
+    }
+
     private func finish(save: Bool) {
         guard editing else { return }
         editing = false

@@ -59,6 +59,8 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
     public var seekAttention = true
     /// Focus sessions a pet must finish (with its treats and a best friend) before it can evolve.
     public var focusSessionsToEvolve = 50
+    /// Timers keep counting while PokeToy isn't running (the default); off, they pause and pick up where they left off.
+    public var keepRunningWhileClosed = true
 
     public init() {}
 
@@ -174,7 +176,7 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case sessions, focusMinutes, shortBreakMinutes, longBreakMinutes, focusesPerLongBreak, autoStartBreaks,
-             autoStartFocus, notifications, sound, seekAttention, focusSessionsToEvolve
+             autoStartFocus, notifications, sound, seekAttention, focusSessionsToEvolve, keepRunningWhileClosed
     }
 
     /// A session that may fail to decode (then it's skipped).
@@ -209,6 +211,7 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
         sound = bool(.sound, d.sound)
         seekAttention = bool(.seekAttention, d.seekAttention)
         focusSessionsToEvolve = int(.focusSessionsToEvolve, d.focusSessionsToEvolve, Self.evolveRange)
+        keepRunningWhileClosed = bool(.keepRunningWhileClosed, d.keepRunningWhileClosed)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -221,6 +224,7 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
         try c.encode(sound, forKey: .sound)
         try c.encode(seekAttention, forKey: .seekAttention)
         try c.encode(focusSessionsToEvolve, forKey: .focusSessionsToEvolve)
+        try c.encode(keepRunningWhileClosed, forKey: .keepRunningWhileClosed)
     }
 }
 
@@ -297,6 +301,18 @@ public struct Pomodoro: Codable, Equatable, Sendable {
         var timer = Pomodoro(petID: petID, phase: .focus, now: Date(), options: options)
         timer.state = .waiting
         return timer
+    }
+
+    /// Running timers as they should be when PokeToy starts again after being closed at `closedAt`: each has the
+    /// time left it had then (as if paused while the app wasn't running). Paused and waiting timers stay as they were.
+    public static func resumed(_ timers: [Pomodoro], closedAt: Date, now: Date) -> [Pomodoro] {
+        guard now > closedAt else { return timers }
+        return timers.map { timer in
+            guard case .running(let endsAt) = timer.state else { return timer }
+            var resumed = timer
+            resumed.state = .running(endsAt: now.addingTimeInterval(max(0, endsAt.timeIntervalSince(closedAt))))
+            return resumed
+        }
     }
 
     /// Names the task (a blank name clears it).

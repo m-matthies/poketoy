@@ -35,6 +35,8 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
                                      target: nil, action: nil)
     private let notifications = NSButton(checkboxWithTitle: "Show notifications", target: nil, action: nil)
     private let sound = NSButton(checkboxWithTitle: "Play a sound", target: nil, action: nil)
+    private let pauseWhileClosed = NSButton(checkboxWithTitle: "Pause timers while PokeToy is closed "
+                                            + "(they pick up where they left off)", target: nil, action: nil)
     // Sections, one at a time
     private let sections = NSSegmentedControl(labels: ["General", "Shortcuts & Hiding", "Pomodoro"],
                                               trackingMode: .selectOne, target: nil, action: nil)
@@ -152,8 +154,9 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         let pomodoro = section([
             NSTextField(labelWithString: "Sessions (work sessions count as focus, relax ones as breaks):"),
             sessionsList(), pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound,
+            pauseWhileClosed,
         ])
-        for box in [autoBreaks, autoFocus, attention, notifications, sound] {
+        for box in [autoBreaks, autoFocus, attention, notifications, sound, pauseWhileClosed] {
             box.target = self
             box.action = #selector(pomodoroChanged)
         }
@@ -397,13 +400,14 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     @objc private func pomodoroChanged() {
         let values = (autoBreaks.state == .on, autoFocus.state == .on, attention.state == .on,
-                      notifications.state == .on, sound.state == .on)
+                      notifications.state == .on, sound.state == .on, pauseWhileClosed.state == .off)
         model.updatePreferences { prefs in
             prefs.pomodoro.autoStartBreaks = values.0
             prefs.pomodoro.autoStartFocus = values.1
             prefs.pomodoro.seekAttention = values.2
             prefs.pomodoro.notifications = values.3
             prefs.pomodoro.sound = values.4
+            prefs.pomodoro.keepRunningWhileClosed = values.5
         }
     }
 
@@ -459,6 +463,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         attention.state = options.seekAttention ? .on : .off
         notifications.state = options.notifications ? .on : .off
         sound.state = options.sound ? .on : .off
+        pauseWhileClosed.state = options.keepRunningWhileClosed ? .off : .on
     }
 
     // MARK: - Actions

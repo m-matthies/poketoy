@@ -78,6 +78,8 @@ public struct Settings: Codable, Equatable, Sendable {
     /// False until the player has picked their first Pokémon (a fresh start or after a reset).
     public var starterChosen: Bool
     public var preferences = Preferences()
+    /// When PokeToy was last known to be running (saved regularly and on quit), to pause timers while it's closed.
+    public var lastAlive: Date?
     /// Species keys (`0016`) of wild Pokémon met in catch rounds, for the Pokédex's "seen".
     public var seen: [String] = []
     /// Pomodoro timers, at most one per pet (running, paused, or waiting to start).
@@ -100,7 +102,7 @@ public struct Settings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences, timers, pomodoro, seen
+        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences, timers, pomodoro, seen, lastAlive
     }
 
     /// A timer that may fail to decode (then it's dropped).
@@ -124,6 +126,7 @@ public struct Settings: Codable, Equatable, Sendable {
         try c.encode(preferences, forKey: .preferences)
         try c.encode(timers, forKey: .timers)
         try c.encode(seen, forKey: .seen)
+        try c.encodeIfPresent(lastAlive, forKey: .lastAlive)
     }
 
     public init(from decoder: Decoder) throws {
@@ -145,6 +148,7 @@ public struct Settings: Codable, Equatable, Sendable {
         var petsWithTimers = Set<UUID>()
         self.timers = timers.filter { petsWithTimers.insert($0.petID).inserted }
         seen = (try? container.decodeIfPresent([String].self, forKey: .seen)) ?? []
+        lastAlive = try? container.decodeIfPresent(Date.self, forKey: .lastAlive)
     }
 
     public static func load(from defaults: UserDefaults, key: String = "settings") -> Settings {
