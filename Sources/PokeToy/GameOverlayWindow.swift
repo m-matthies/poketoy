@@ -30,6 +30,8 @@ final class GameView: NSView {
     private let showsHUD: Bool
     private var drag = DragTracker()
     private var holding = false
+    /// This throw is a Razz Berry: it started with ⌃-click or a right-click (two-finger click).
+    private var holdingBerry = false
     private var lastDirty: [NSRect] = []
 
     init(model: AppModel, controller: GameController, showsHUD: Bool) {
@@ -65,9 +67,7 @@ final class GameView: NSView {
             model.endCatchGame()
             return
         }
-        holding = true
-        let point = NSEvent.mouseLocation
-        drag.begin(at: point, objectPosition: point)
+        grab(berry: event.modifierFlags.contains(.control))
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -76,10 +76,67 @@ final class GameView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        release(berry: event.modifierFlags.contains(.shift))
+    }
+
+    // A right-click (or two-finger click) throws a berry too.
+    override func rightMouseDown(with event: NSEvent) {
+        grab(berry: true)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        mouseDragged(with: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        release(berry: false)
+    }
+
+    private func grab(berry: Bool) {
+        holding = true
+        holdingBerry = berry
+        let point = NSEvent.mouseLocation
+        drag.begin(at: point, objectPosition: point)
+    }
+
+    /// Throws what's held: a Razz Berry for a ⌃-click, right-click or ⇧ release (while berries are left), else a ball.
+    private func release(berry shiftDown: Bool) {
         guard holding else { return }
         holding = false
+        let berry = holdingBerry || shiftDown
+        holdingBerry = false
         let point = NSEvent.mouseLocation
-        model.throwBall(from: CGPoint(x: point.x, y: point.y - ballSize / 2), velocity: drag.releaseVelocity(cap: 2200))
+        let start = CGPoint(x: point.x, y: point.y - ballSize / 2)
+        let velocity = drag.releaseVelocity(cap: 2200)
+        if berry, (model.playground.game?.berriesLeft ?? 0) > 0 {
+            model.throwBerry(from: start, velocity: velocity)
+        } else {
+            model.throwBall(from: start, velocity: velocity)
+        }
+    }
+
+    /// What the held item will be: a berry for a ⌃-click, right-click or while ⇧ is down (and berries are left),
+    /// else the current ball.
+    private var heldKind: ItemKind {
+        let berry = holdingBerry || NSEvent.modifierFlags.contains(.shift)
+        if berry, (model.playground.game?.berriesLeft ?? 0) > 0 { return .razzBerry }
+        return model.playground.game?.ballTier.itemKind ?? .pokeBall
+    }
+
+    /// Predicted flight of the held item for the current flick, in view coordinates (dots every 0.05 s).
+    private func aimingArc(origin: CGPoint) -> [CGPoint] {
+        let velocity = drag.releaseVelocity(cap: 2200)
+        guard holding, hypot(velocity.dx, velocity.dy) > 60 else { return [] }
+        let mouse = NSEvent.mouseLocation
+        return stride(from: 0.05, through: 1.2, by: 0.05).map { t -> CGPoint in
+            let t = CGFloat(t)
+            return CGPoint(x: mouse.x + velocity.dx * t - origin.x,
+                           y: mouse.y + velocity.dy * t - Physics.gravity * t * t / 2 - origin.y)
+        }
+    }
+
+    private func drawnItems() -> [Item] {
+        model.playground.items.filter { $0.kind.isBall || $0.kind == .razzBerry }
     }
 
     override func keyDown(with event: NSEvent) {
@@ -103,7 +160,7 @@ final class GameView: NSView {
         guard let window else { return [] }
         let origin = window.frame.origin
         let size = ballSize
-        var rects = model.playground.items.filter { $0.kind == .pokeBall }.map { item in
+        var rects = drawnItems().map { item in
             NSRect(x: item.body.position.x - origin.x - size, y: item.body.position.y - origin.y - size / 2,
                    width: size * 2, height: size * 2)
         }
@@ -111,6 +168,7 @@ final class GameView: NSView {
             let mouse = NSEvent.mouseLocation
             rects.append(NSRect(x: mouse.x - origin.x - size, y: mouse.y - origin.y - size, width: size * 2, height: size * 2))
         }
+        rects += aimingArc(origin: origin).map { NSRect(x: $0.x - 4, y: $0.y - 4, width: 8, height: 8) }
         rects += controller.effects.map { effectRect($0, origin: origin) }
         if showsHUD {
             if let hud = hudLayout() { rects.append(hud.background.insetBy(dx: -2, dy: -2)) }
@@ -123,9 +181,13 @@ final class GameView: NSView {
         guard let window, let context = NSGraphicsContext.current?.cgContext else { return }
         let origin = window.frame.origin
         let size = ballSize
-        let ball = ItemArt.frame(for: .pokeBall).image
         context.interpolationQuality = .none
-        for item in model.playground.items where item.kind == .pokeBall {
+        for (index, dot) in aimingArc(origin: origin).enumerated() {
+            NSColor.white.withAlphaComponent(0.8 * (1 - CGFloat(index) / 24)).setFill()
+            NSBezierPath(ovalIn: NSRect(x: dot.x - 2.5, y: dot.y - 2.5, width: 5, height: 5)).fill()
+        }
+        for item in drawnItems() {
+            let ball = ItemArt.frame(for: item.kind).image
             let base = CGPoint(x: item.body.position.x - origin.x, y: item.body.position.y - origin.y)
             guard bounds.insetBy(dx: -size, dy: -size).contains(base) else { continue }
             context.saveGState()
@@ -137,8 +199,9 @@ final class GameView: NSView {
         }
         if holding {
             let mouse = NSEvent.mouseLocation
-            context.draw(ball, in: CGRect(x: mouse.x - origin.x - size / 2, y: mouse.y - origin.y - size / 2,
-                                          width: size, height: size))
+            context.draw(ItemArt.frame(for: heldKind).image,
+                         in: CGRect(x: mouse.x - origin.x - size / 2, y: mouse.y - origin.y - size / 2,
+                                    width: size, height: size))
         }
         drawEffects(origin: origin)
         if showsHUD { drawHUD() }
@@ -197,7 +260,15 @@ final class GameView: NSView {
                 text = "Go!"
                 big = true
             case .playing(let remaining):
-                text = "⏱ \(Int(remaining.rounded(.up)))    ★ \(game.score)    ◓ \(game.catches.count)    Click & flick to throw"
+                let ball: String
+                switch game.ballTier {
+                case .poke: ball = "Poké Ball"
+                case .great: ball = "Great Ball"
+                case .ultra: ball = "Ultra Ball"
+                }
+                let combo = game.combo > 1 ? " · combo ×\(game.combo)" : ""
+                text = "⏱ \(Int(remaining.rounded(.up)))   ★ \(game.score)   ◓ \(game.catches.count)   "
+                    + "\(ball)\(combo)   Razz ×\(game.berriesLeft) (⌃-click)"
             case .finished:
                 return nil
             }

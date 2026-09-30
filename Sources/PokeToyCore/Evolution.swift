@@ -102,11 +102,21 @@ public actor EvolutionStore {
                            evolutionChainID: raw.evolutionChain.flatMap { Evolution.trailingNumber($0.url) })
     }
 
+    func speciesDocument(_ dex: Int) async throws -> Data {
+        try await document("pokemon-species/\(dex)")
+    }
+
     /// The species `dex` can evolve into.
     public func nextForms(of dex: Int) async throws -> [Int] {
         guard let chainID = try await species(dex).evolutionChainID else { return [] }
         let chain = try Evolution.parseChain(json: try await document("evolution-chain/\(chainID)"))
         return Evolution.nextForms(in: chain, after: dex)
+    }
+
+    /// A Pokémon's types (e.g. ["normal", "flying"]).
+    public func types(of dex: Int) async throws -> [String] {
+        let raw = try JSONDecoder().decode(RawPokemon.self, from: try await document("pokemon/\(dex)"))
+        return raw.types.sorted { $0.slot < $1.slot }.map(\.type.name)
     }
 
     /// A PokeAPI document, from the cache when present.
@@ -122,6 +132,15 @@ public actor EvolutionStore {
         return data
     }
 
+    private struct RawPokemon: Decodable {
+        struct Slot: Decodable {
+            struct Named: Decodable { let name: String }
+            let slot: Int
+            let type: Named
+        }
+        let types: [Slot]
+    }
+
     private struct RawSpecies: Decodable {
         struct Link: Decodable { let url: String }
         let isLegendary: Bool
@@ -133,5 +152,65 @@ public actor EvolutionStore {
             case isMythical = "is_mythical"
             case evolutionChain = "evolution_chain"
         }
+    }
+}
+
+/// A minimal Pokédex description: types, category ("Mouse Pokémon") and one line of flavor text.
+public struct PokemonDescription: Equatable, Sendable {
+    public let types: [String]
+    public let genus: String?
+    public let flavor: String?
+
+    /// "Electric · Mouse Pokémon — When several of these Pokémon gather…"
+    public var summary: String {
+        let head = [types.map(\.capitalized).joined(separator: "/"), genus ?? ""].filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        guard let flavor else { return head }
+        return head.isEmpty ? flavor : "\(head) — \(flavor)"
+    }
+
+    /// Reads a PokeAPI `pokemon-species` document: the English genus and the newest English flavor text.
+    public static func parse(speciesJSON: Data, types: [String]) throws -> PokemonDescription {
+        let raw = try JSONDecoder().decode(RawSpeciesText.self, from: speciesJSON)
+        let genus = raw.genera?.first { $0.language.name == "en" }?.genus
+        let flavor = raw.flavorTextEntries?.last { $0.language.name == "en" }.map { clean($0.flavorText) }
+        return PokemonDescription(types: types, genus: genus, flavor: flavor.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
+    /// Game text has line breaks, form feeds and soft hyphens where the game wrapped it.
+    private static func clean(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{AD}\n", with: "").replacingOccurrences(of: "\u{AD}", with: " ")
+            .components(separatedBy: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{0C}")))
+            .filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    private struct RawSpeciesText: Decodable {
+        struct Language: Decodable { let name: String }
+        struct Genus: Decodable {
+            let genus: String
+            let language: Language
+        }
+        struct Flavor: Decodable {
+            let flavorText: String
+            let language: Language
+            enum CodingKeys: String, CodingKey {
+                case flavorText = "flavor_text"
+                case language
+            }
+        }
+        let genera: [Genus]?
+        let flavorTextEntries: [Flavor]?
+        enum CodingKeys: String, CodingKey {
+            case genera
+            case flavorTextEntries = "flavor_text_entries"
+        }
+    }
+}
+
+extension EvolutionStore {
+    /// A species' short Pokédex description (cached with the other PokeAPI documents).
+    public func description(of dex: Int) async throws -> PokemonDescription {
+        let types = (try? await self.types(of: dex)) ?? []
+        return try PokemonDescription.parse(speciesJSON: try await speciesDocument(dex), types: types)
     }
 }

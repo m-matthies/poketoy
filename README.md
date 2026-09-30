@@ -16,6 +16,8 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 
 ## Using it
 
+- On first start you choose your partner: **Pikachu**, **Charmander**, **Squirtle** or **Bulbasaur**. More pets only
+  come from the catch game (and evolution) — up to 12.
 - **Click** a pet to make it happy; **drag** it to pick it up and let go (or throw it — thrown pets knock others over and
   land dizzy). Click one five times in a row and it gets annoyed, glares at you and storms off.
 - **Stroke** a pet by rubbing the cursor back and forth over it: hearts. Sleeping pets sleep on, happily.
@@ -31,20 +33,32 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - **Feed** (⌃⌥B — works from any app, no permissions needed) drops an apple or Oran Berry right next to your mouse
   pointer; it falls onto whatever is below and the nearest pet runs over to eat it. Treats can be dragged and thrown too;
   uneaten ones spoil after 90 seconds.
-- **Play Fetch** (⌘J in the app menu) drops a ball: pets race for it and the winner brings it back to below your cursor.
+- **Play Fetch** (⌘J in the app menu) drops a ball: pets race for it and the winner brings it back to below your cursor. A game of
+  fetch lasts one minute, then the ball fades away.
 - **Evolution:** after 15 treats and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
   per possible evolution; evolution data comes from [PokeAPI](https://pokeapi.co)).
-- **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run across the screen. Press, flick and release to throw
-  Poké Balls. Hits score 25, catches 100. Afterwards, pick which catches to keep as pets. Esc or the **End** button ends
-  the round early.
+- **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run — or fly — across the screen. Press, flick and
+  release to throw; a dotted arc shows where it will go. Hits score 25, catches 100; **legendaries** (rare) are worth 3×,
+  **shinies** (1 in 64, they sparkle) 2×, and consecutive hits build a **combo** (up to 2× points) that upgrades your ball to
+  a **Great Ball** after 3 hits and an **Ultra Ball** after 5 (better catch chances) — a miss resets it. Catching with the
+  first ball that hit is worth a +50 bonus. **⌃-click** (or right-click) to throw one of your 3 **Razz Berries**: it calms a
+  wild Pokémon (slower, unafraid, easier to catch). Afterwards, pick which catches to keep as pets. Esc or the **End**
+  button ends the round early.
+- Each round brings at least 10 different wild Pokémon, species you don't have yet first; they walk in from the screen
+  edges or pop up anywhere on the floor or on top of windows, and one you've caught doesn't come back that round.
+- **Pokédex…** lists every species you've caught, kept as a pet (current and former) or seen (downloaded), in national dex
+  order, each with a short description from PokeAPI (type, category and a line of Pokédex text), ✦ for shinies, and how
+  complete your collection is.
 - Menu bar paw icon or right-click the Dock icon:
-  - **Show / Hide Pets**, **Add Pokémon…**, **Feed**, **Play Fetch**, **Start / End Catch Game**
-  - **Pets** — best friend, evolution progress / Evolve, Remove
+  - **Show / Hide Pets**, **Feed**, **Play Fetch**, **Start / End Catch Game**,
+    **Pokédex…**
+  - **Pets** — best friend, evolution progress / Evolve, Release
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×
-- **Add Pokémon…** lists Pokémon with complete sprite sets; tick **Show all Pokémon** for every entry on SpriteCollab.
-  Sprites and portraits download on first use and are cached in `~/Library/Caches/PokeToy`. Up to 12 pets.
-- Clicking the Dock icon shows hidden pets, or opens the picker.
+  - **Reset Game…** — after asking, releases every pet and erases the Pokédex, scores, friendships, settings and downloaded
+    Pokémon; then you choose a new starter.
+- Sprites and portraits download on first use and are cached in `~/Library/Caches/PokeToy`.
+- Clicking the Dock icon shows hidden pets, or opens the Pokédex.
 
 ## Development
 

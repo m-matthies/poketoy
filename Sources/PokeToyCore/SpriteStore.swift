@@ -21,15 +21,18 @@ public actor SpriteStore {
     private let cacheDirectory: URL
     private let remoteBase: URL
     private let bundledSprites: URL?
+    /// Portraits shipped with the app (`<path>/<Emotion>.png`); a species found here is never downloaded.
+    private let bundledPortraits: URL?
     private let session: URLSession
     /// After a network failure, portraits come only from the cache for a while.
     private var portraitsOfflineUntil: Date?
 
     public init(cacheDirectory: URL, remoteBase: URL = SpriteStore.defaultRemoteBase, bundledSprites: URL? = nil,
-                session: URLSession = .shared) {
+                bundledPortraits: URL? = nil, session: URLSession = .shared) {
         self.cacheDirectory = cacheDirectory
         self.remoteBase = remoteBase
         self.bundledSprites = bundledSprites
+        self.bundledPortraits = bundledPortraits
         self.session = session
     }
 
@@ -95,6 +98,14 @@ public actor SpriteStore {
         }
     }
 
+    /// Deletes every downloaded sprite and portrait (bundled sprites and the catalog stay).
+    public func clearDownloads() {
+        for folder in ["sprite", "portrait"] {
+            try? FileManager.default.removeItem(at: cacheDirectory.appendingPathComponent(folder))
+        }
+        portraitsOfflineUntil = nil
+    }
+
     /// Paths (e.g. `0025/0000/0001`) of every usable cached or bundled sprite directory.
     public func cachedSpritePaths() -> [String] {
         var paths = Set<String>()
@@ -117,8 +128,18 @@ public actor SpriteStore {
     /// A local portrait image for `path` showing `emotion`, trying its fallbacks in order (ending with "Normal").
     /// Portraits SpriteCollab doesn't have are remembered so they aren't requested again. Nil if none is available.
     public func portrait(for path: String, emotion: Emotion) async -> URL? {
+        await portrait(for: path, names: emotion.portraitNames)
+    }
+
+    /// A local portrait image for `path`: the first of `names` SpriteCollab has (e.g. ["Normal"]).
+    public func portrait(for path: String, names: [String]) async -> URL? {
+        if let bundled = bundledPortraits?.appendingPathComponent(path, isDirectory: true),
+           FileManager.default.fileExists(atPath: bundled.path) {
+            return names.lazy.map { bundled.appendingPathComponent("\($0).png") }
+                .first { FileManager.default.fileExists(atPath: $0.path) }
+        }
         let directory = cacheDirectory.appendingPathComponent("portrait").appendingPathComponent(path, isDirectory: true)
-        for name in emotion.portraitNames {
+        for name in names {
             let file = directory.appendingPathComponent("\(name).png")
             if FileManager.default.fileExists(atPath: file.path) { return file }
             let missing = directory.appendingPathComponent(".missing-\(name)")

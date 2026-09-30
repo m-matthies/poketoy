@@ -2,8 +2,8 @@ import CoreGraphics
 import Foundation
 
 extension Playground {
-    /// A fetch ball nobody touches for this long disappears.
-    public static let toyLifetime = 300.0
+    /// A game of fetch lasts a minute: then the ball fades away (a carrier drops it first).
+    public static let fetchLength = 60.0
     static let pickUpDistance: CGFloat = 16
 
     public var canDropToy: Bool {
@@ -22,6 +22,16 @@ extension Playground {
     /// Free pets race for the ball; the first to reach it carries it back to below the cursor and drops it.
     mutating func fetchRules(world: World) {
         guard game == nil, let t = items.firstIndex(where: { $0.kind == .toyBall }) else {
+            fetchRacers = []
+            return
+        }
+        if case .fading = items[t].state {
+            fetchRacers = []
+            return
+        }
+        if items[t].playTime >= Self.fetchLength {
+            if case .carried = items[t].state { dropCarriedToy(t) }
+            items[t].state = .fading(remaining: 1)
             fetchRacers = []
             return
         }

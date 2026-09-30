@@ -29,12 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menus.makeDockMenu()
     }
 
-    /// Clicking the Dock icon shows hidden pets, otherwise opens the picker.
+    /// Clicking the Dock icon shows hidden pets, else the starter choice (if still open) or the Pokédex.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if model.settings.hidden {
             model.setHidden(false)
+        } else if model.needsStarter {
+            model.showStarterChoice()
         } else {
-            model.showPicker()
+            model.showPokedex()
         }
         return false
     }

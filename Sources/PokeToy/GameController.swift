@@ -78,6 +78,13 @@ final class GameController {
         }
     }
 
+    /// Closes open results windows without keeping anything (e.g. on a reset).
+    func closeResults() {
+        let open = openResults
+        openResults = []
+        for controller in open { controller.close() }
+    }
+
     func finish() {
         status = .idle
         effects = []

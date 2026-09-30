@@ -20,11 +20,24 @@ extension Playground {
         game?.requestEnd()
     }
 
-    /// Throws a Poké Ball from `position`. Only while playing, and at most `CatchGame.maxBallsInFlight` at once.
+    /// Throws the current ball (Poké, Great or Ultra, by combo) from `position`. Only while playing,
+    /// and at most `CatchGame.maxBallsInFlight` at once.
     @discardableResult
     public mutating func throwBall(from position: CGPoint, velocity: CGVector) -> Bool {
-        guard game?.isPlaying == true, ballsInFlight < CatchGame.maxBallsInFlight else { return false }
-        items.append(Item(kind: .pokeBall, body: Body(position: position, velocity: velocity), state: .flying))
+        guard let tier = game?.ballTier, game?.isPlaying == true, ballsInFlight < CatchGame.maxBallsInFlight else {
+            return false
+        }
+        items.append(Item(kind: tier.itemKind, body: Body(position: position, velocity: velocity), state: .flying))
+        return true
+    }
+
+    /// Throws one of the round's Razz Berries; a wild Pokémon it hits calms down for a while.
+    @discardableResult
+    public mutating func throwBerry(from position: CGPoint, velocity: CGVector) -> Bool {
+        guard game?.isPlaying == true, ballsInFlight < CatchGame.maxBallsInFlight, game?.useBerry() == true else {
+            return false
+        }
+        items.append(Item(kind: .razzBerry, body: Body(position: position, velocity: velocity), state: .flying))
         return true
     }
 
@@ -35,14 +48,18 @@ extension Playground {
             } else {
                 if game!.isActive { keepOwnPetsSitting() }
                 let wildCount = pets.filter { $0.role == .wild }.count
-                if let spec = game!.spawn(dt: dt, wildCount: wildCount) { spawnWild(spec, world: world) }
+                if let pick = game!.spawn(dt: dt, wildCount: wildCount) { spawnWild(pick.spec, shiny: pick.shiny, world: world) }
             }
         }
         driveWild(dt: dt, world: world)
     }
 
     mutating func gameRulesAfterPhysics(dt: Double) {
-        if game?.isPlaying == true { ballHits() }
+        if game?.isPlaying == true {
+            ballHits()
+            berryHits()
+        }
+        settleLandedBalls()
         advanceWobbles(dt: dt)
     }
 
@@ -55,16 +72,56 @@ extension Playground {
         }
     }
 
-    private mutating func spawnWild(_ spec: WildSpec, world: World) {
+    private mutating func spawnWild(_ spec: WildSpec, shiny: Bool, world: World) {
         guard !world.screens.isEmpty else { return }
-        let pick = game?.randomUnit() ?? 0
-        let screen = world.screens[min(Int(pick * Double(world.screens.count)), world.screens.count - 1)]
-        let fromLeft = (game?.randomUnit() ?? 0) < 0.5
-        let x = fromLeft ? screen.frame.minX + 40 : screen.frame.maxX - 40
-        let id = addPet(role: .wild, metrics: spec.metrics, at: CGPoint(x: x, y: screen.visibleFrame.minY + 1))
+        // The same rolls for every spawn, whatever the Pokémon and the screen, so seeded rounds stay in step.
+        let rolls = (0..<5).map { _ in CGFloat(game?.randomUnit() ?? 0.5) }
+        let (screenRoll, sideRoll, heightRoll, placeRoll, spotRoll) = (rolls[0], rolls[1], rolls[2], rolls[3], rolls[4])
+        let screen = world.screens[min(Int(screenRoll * CGFloat(world.screens.count)), world.screens.count - 1)]
+        let fromLeft = sideRoll < 0.5
+        let margin: CGFloat = 60
+        var x = fromLeft ? screen.frame.minX + 40 : screen.frame.maxX - 40
+        var y = screen.visibleFrame.minY + 1
+        var flight: Flight?
+        if spec.canFly {
+            // Glide at a random height between 150 pt above the floor and 70% of the screen, from anywhere across it.
+            let low = screen.visibleFrame.minY + 150
+            let high = max(low, screen.frame.minY + screen.frame.height * 0.7)
+            y = low + heightRoll * (high - low)
+            if placeRoll >= 1.0 / 3 {
+                x = screen.frame.minX + margin + spotRoll * max(0, screen.frame.width - 2 * margin)
+            }
+            flight = Flight(baseY: y, direction: fromLeft ? 1 : -1)
+        } else if placeRoll >= 1.0 / 3 {
+            // Two times in three it pops up somewhere on the screen's floor or on top of a window there,
+            // otherwise it walks in from an edge.
+            let spots = world.surfaces.filter {
+                $0.width >= 80 && $0.y >= screen.frame.minY && $0.y < screen.frame.maxY
+                    && $0.maxX > screen.frame.minX + margin && $0.minX < screen.frame.maxX - margin
+            }.sorted { ($0.kind == .floor ? 0 : 1, $0.y, $0.minX) < ($1.kind == .floor ? 0 : 1, $1.y, $1.minX) }
+            if !spots.isEmpty {
+                // Window tops get half of these spawns when there are any, the floor the rest.
+                let windows = spots.filter { $0.kind == .window }, floors = spots.filter { $0.kind == .floor }
+                let t = (placeRoll - 1.0 / 3) * 1.5  // 0..<1
+                let split = !windows.isEmpty && !floors.isEmpty
+                let group = split ? (t >= 0.5 ? windows : floors) : (windows.isEmpty ? floors : windows)
+                let within = split ? (t >= 0.5 ? t - 0.5 : t) * 2 : t
+                let surface = group[max(0, min(Int(within * CGFloat(group.count)), group.count - 1))]
+                let lo = max(surface.minX + 20, screen.frame.minX + margin)
+                let hi = min(surface.maxX - 20, screen.frame.maxX - margin)
+                x = lo + spotRoll * max(0, hi - lo)
+                y = surface.y + 1
+            }
+        }
+        let id = addPet(role: .wild, metrics: spec.metrics, at: CGPoint(x: x, y: y))
         pets[pets.count - 1].lifetime = game?.wildLifetime() ?? CatchGame.lifetime.lowerBound
+        pets[pets.count - 1].flight = flight
         wildSpecs[id] = spec
         events.append(.wildSpawned(petID: id, path: spec.path))
+        if shiny {
+            wildShiny.insert(id)
+            events.append(.wildShiny(petID: id))
+        }
     }
 
     /// Ages wild Pokémon, sends them off-screen when their time is up (or the round is over),
@@ -78,7 +135,8 @@ extension Playground {
             if fleeBoost.contains(id), pets[i].brain.isFree {
                 let away: CGFloat = rng.unit() < 0.5 ? -1 : 1
                 pets[i].perform(Script(anim: .walk, moveTo: pets[i].body.position.x + away * 300,
-                                       speed: PetBrain.walkSpeed * 1.6 * 2, end: .after(2), priority: 2))
+                                       speed: PetBrain.walkSpeed * 1.6 * 2 * (isCalm(i) ? 0.5 : 1), end: .after(2),
+                                       priority: 2))
                 fleeBoost.remove(id)
             }
             let x = pets[i].body.position.x
@@ -87,22 +145,81 @@ extension Playground {
                 // Head for the outer edge of all screens, so side-by-side displays can't bounce it back and forth.
                 pets[i].exitX = x - lo < hi - x ? lo - 200 : hi + 200
             }
+            if pets[i].flight != nil {
+                glide(i, dt: dt, world: world)
+                continue
+            }
             guard pets[i].leaving, let exit = pets[i].exitX, (pets[i].brain.script?.priority ?? 0) < 3 else { continue }
-            pets[i].perform(Script(anim: .walk, moveTo: exit, speed: PetBrain.walkSpeed * 1.6 * 1.5, end: .arrived, priority: 3))
+            pets[i].perform(Script(anim: .walk, moveTo: exit, speed: PetBrain.walkSpeed * 1.6 * 1.5 * (isCalm(i) ? 0.5 : 1),
+                                   end: .arrived, priority: 3))
         }
     }
 
     // MARK: - Balls
 
-    private mutating func ballHits() {
-        for b in items.indices where items[b].kind == .pokeBall && items[b].state == .flying {
+    /// A flying wild Pokémon glides sideways, bobbing, turning at screen edges until it leaves.
+    private mutating func glide(_ i: Int, dt: Double, world: World) {
+        guard var flight = pets[i].flight else { return }
+        let x = pets[i].body.position.x
+        if pets[i].leaving, let exit = pets[i].exitX {
+            flight.direction = exit > x ? 1 : -1
+        } else if let screen = world.screens.first(where: { $0.frame.minX <= x && x <= $0.frame.maxX }) {
+            if x < screen.frame.minX + 40 { flight.direction = 1 }
+            if x > screen.frame.maxX - 40 { flight.direction = -1 }
+        }
+        let speed = PetBrain.walkSpeed * 1.6 * (isCalm(i) ? 0.5 : 1) * (pets[i].leaving ? 1.5 : 1)
+        flight.phase += dt * 2.5
+        pets[i].body.surfaceID = nil
+        pets[i].body.velocity = CGVector(dx: flight.direction * speed, dy: 0)
+        pets[i].body.position = CGPoint(x: x + flight.direction * speed * CGFloat(dt),
+                                        y: flight.baseY + CGFloat(sin(flight.phase)) * 40)
+        pets[i].brain.glide(toward: flight.direction)
+        pets[i].flight = flight
+    }
+
+    private mutating func berryHits() {
+        for b in items.indices where items[b].kind == .razzBerry && items[b].state == .flying {
             let center = CGPoint(x: items[b].body.position.x,
                                  y: items[b].body.position.y + CGFloat(ItemArt.size) * scale / 2)
             guard let w = pets.indices.first(where: {
                 pets[$0].role == .wild && pets[$0].visible && pets[$0].hitRect.contains(center)
             }) else { continue }
-            let outcome = game?.rollCatch() ?? (caught: false, wobbles: 1)
-            game?.recordHit()
+            calmedUntil[pets[w].id] = clock + Self.calmTime
+            items[b].state = .fading(remaining: 0.3)
+            items[b].body.velocity = .zero
+            feel(.happy, w)
+        }
+    }
+
+    static let calmTime = 8.0
+
+    /// Balls that landed this step without hitting anything: a miss, which breaks the combo.
+    private mutating func settleLandedBalls() {
+        guard !landedBalls.isEmpty else { return }
+        for i in items.indices where landedBalls.contains(items[i].id) && items[i].state == .flying {
+            if game?.isPlaying == true { game?.registerMiss() }
+            items[i].state = .fading(remaining: 1.5)
+        }
+        landedBalls.removeAll()
+    }
+
+    private func isCalm(_ i: Int) -> Bool {
+        (calmedUntil[pets[i].id] ?? 0) > clock
+    }
+
+    private mutating func ballHits() {
+        for b in items.indices where items[b].kind.isBall && items[b].state == .flying {
+            let center = CGPoint(x: items[b].body.position.x,
+                                 y: items[b].body.position.y + CGFloat(ItemArt.size) * scale / 2)
+            guard let w = pets.indices.first(where: {
+                pets[$0].role == .wild && pets[$0].visible && pets[$0].hitRect.contains(center)
+            }) else { continue }
+            let wildID = pets[w].id
+            let tier: BallTier = items[b].kind == .ultraBall ? .ultra : items[b].kind == .greatBall ? .great : .poke
+            let outcome = game?.rollCatch(tier: tier, calmed: (calmedUntil[wildID] ?? 0) > clock)
+                ?? (caught: false, wobbles: 1)
+            game?.recordHit(isLegendary: wildSpecs[wildID]?.isLegendary ?? false, isShiny: wildShiny.contains(wildID))
+            hitMultiplier[wildID] = game?.comboMultiplier
             // Never let the ball start below the wild's feet, or it could fall past the floor.
             items[b].body.position.y = max(items[b].body.position.y, pets[w].body.position.y)
             pets[w].visible = false
@@ -140,7 +257,11 @@ extension Playground {
         }
         if caught {
             if let spec = wildSpecs[petID] {
-                game?.recordCatch(CatchRecord(petID: petID, path: spec.path, displayName: spec.displayName, position: position))
+                let shiny = wildShiny.contains(petID)
+                let record = CatchRecord(petID: petID, path: shiny ? (spec.shinyPath ?? spec.path) : spec.path,
+                                         displayName: spec.displayName, position: position, isShiny: shiny)
+                game?.recordCatch(record, isLegendary: spec.isLegendary, firstThrow: !brokeFreeOnce.contains(petID),
+                                  multiplier: hitMultiplier[petID])
             }
             removePet(petID)
             items[b].state = .fading(remaining: 0.8)
@@ -151,6 +272,8 @@ extension Playground {
             }
         } else {
             pets[w].visible = true
+            pets[w].flight = nil  // out of the ball it drops to the ground, flyer or not
+            brokeFreeOnce.insert(petID)
             pets[w].body = Body(position: CGPoint(x: position.x, y: position.y + 4))
             pets[w].handle(.knocked(velocity: CGVector(dx: 0, dy: 250)))  // pops out of the ball
             fleeBoost.insert(petID)
@@ -177,4 +300,11 @@ extension Playground {
         game = nil
         events.append(.roundEnded)
     }
+}
+
+/// How a flying wild Pokémon glides.
+struct Flight: Sendable {
+    var baseY: CGFloat
+    var direction: CGFloat
+    var phase: Double = 0
 }

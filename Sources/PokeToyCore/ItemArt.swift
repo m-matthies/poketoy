@@ -2,12 +2,15 @@ import CoreGraphics
 import Foundation
 
 public enum ItemKind: String, CaseIterable, Sendable {
-    case apple, oranBerry, pokeBall, toyBall
+    case apple, oranBerry, pokeBall, toyBall, greatBall, ultraBall, razzBerry
 
     public var isTreat: Bool { self == .apple || self == .oranBerry }
 
-    /// Treats and the fetch ball can be picked up and thrown by the user; Poké Balls can't.
-    public var isHandheld: Bool { self != .pokeBall }
+    /// Treats and the fetch ball can be picked up and thrown by the user; catch-game items can't.
+    public var isHandheld: Bool { isTreat || self == .toyBall }
+
+    /// Poké, Great and Ultra Balls thrown in the catch game.
+    public var isBall: Bool { self == .pokeBall || self == .greatBall || self == .ultraBall }
 }
 
 /// Pixel art for items, drawn from text grids so no asset files are needed.
@@ -17,7 +20,7 @@ public enum ItemArt {
     static let palette: [Character: (UInt8, UInt8, UInt8)] = [
         "K": (24, 20, 28), "R": (224, 48, 56), "r": (150, 24, 40), "W": (248, 248, 248),
         "H": (255, 255, 255), "G": (72, 168, 72), "B": (120, 80, 40), "b": (64, 120, 232),
-        "d": (32, 64, 160), "Y": (248, 208, 48),
+        "d": (32, 64, 160), "Y": (248, 208, 48), "P": (236, 72, 140), "g": (70, 70, 80),
     ]
 
     static let grids: [ItemKind: [String]] = [
@@ -61,6 +64,48 @@ public enum ItemArt {
             ".KbbbbbbdbK.",
             "..KKbbbdKK..",
             "....KKKK....",
+            "............",
+        ],
+        .greatBall: [
+            "....KKKK....",
+            "..KKbbbbKK..",
+            ".KbHRbbRbbK.",
+            ".KbbRbbRbbK.",
+            "KbbbbKKbbbbK",
+            "KKKKKWWKKKKK",
+            "KWWWKWWKWWWK",
+            ".KWWWKKWWWK.",
+            ".KWWWWWWWWK.",
+            "..KKWWWWKK..",
+            "....KKKK....",
+            "............",
+        ],
+        .ultraBall: [
+            "....KKKK....",
+            "..KKggggKK..",
+            ".KgHYggYggK.",
+            ".KggYggYggK.",
+            "KggggKKggggK",
+            "KKKKKWWKKKKK",
+            "KWWWKWWKWWWK",
+            ".KWWWKKWWWK.",
+            ".KWWWWWWWWK.",
+            "..KKWWWWKK..",
+            "....KKKK....",
+            "............",
+        ],
+        .razzBerry: [
+            "....GG......",
+            "...GGGG.....",
+            "....GBG.....",
+            "...KKBKK....",
+            "..KPPPPPK...",
+            ".KPHPPPPPK..",
+            ".KPPPPPPPK..",
+            ".KPPPPPrPK..",
+            "..KPPPrPK...",
+            "...KPPPK....",
+            "....KKK.....",
             "............",
         ],
         .pokeBall: [
