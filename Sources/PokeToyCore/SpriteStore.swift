@@ -112,6 +112,35 @@ public actor SpriteStore {
         return paths.sorted()
     }
 
+    /// A local portrait image for `path` showing `emotion`, trying its fallbacks in order (ending with "Normal").
+    /// Portraits SpriteCollab doesn't have are remembered so they aren't requested again. Nil if none is available.
+    public func portrait(for path: String, emotion: Emotion) async -> URL? {
+        let directory = cacheDirectory.appendingPathComponent("portrait").appendingPathComponent(path, isDirectory: true)
+        for name in emotion.portraitNames {
+            let file = directory.appendingPathComponent("\(name).png")
+            if FileManager.default.fileExists(atPath: file.path) { return file }
+            let missing = directory.appendingPathComponent(".missing-\(name)")
+            if FileManager.default.fileExists(atPath: missing.path) { continue }
+            do {
+                let data = try await fetch("portrait/\(path)/\(name).png")
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try data.write(to: file, options: .atomic)
+                return file
+            } catch {
+                guard Self.isMissing(error) else { return nil }  // offline: try again another time
+                try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: missing.path, contents: nil)
+            }
+        }
+        return nil
+    }
+
+    /// True when the error means "that file doesn't exist" rather than "couldn't ask".
+    private static func isMissing(_ error: Error) -> Bool {
+        if case SpriteStoreError.http(404, _) = error { return true }
+        return (error as? URLError)?.code == .fileDoesNotExist
+    }
+
     public static func isComplete(_ directory: URL) -> Bool {
         guard let xml = try? Data(contentsOf: directory.appendingPathComponent("AnimData.xml")),
               let data = try? AnimData(xml: xml) else { return false }

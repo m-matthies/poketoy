@@ -130,4 +130,37 @@ import Testing
         #expect(SpriteStoreError.http(status: 500, path: "x").localizedDescription == "SpriteCollab answered with HTTP 500.")
         #expect(SpriteStoreError.timedOut.localizedDescription == "SpriteCollab took too long to answer.")
     }
+
+    func portraitRemote(_ names: [String]) throws -> URL {
+        let remote = makeTempDirectory()
+        let dir = remote.appendingPathComponent("portrait/0025")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for name in names {
+            try writePNG(makeSheet(width: 40, height: 40, opaquePixels: [(20, 20)]), to: dir.appendingPathComponent("\(name).png"))
+        }
+        return remote
+    }
+
+    @Test func portraitsFollowTheFallbackChain() async throws {
+        let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: try portraitRemote(["Happy", "Normal"]))
+        let joyous = await store.portrait(for: "0025", emotion: .joyous)
+        #expect(joyous?.lastPathComponent == "Happy.png")
+        let angry = await store.portrait(for: "0025", emotion: .angry)
+        #expect(angry?.lastPathComponent == "Normal.png")
+    }
+
+    @Test func missingPortraitsAreRemembered() async throws {
+        let cache = makeTempDirectory()
+        let remote = try portraitRemote(["Happy"])
+        let store = SpriteStore(cacheDirectory: cache, remoteBase: remote)
+        #expect(await store.portrait(for: "0025", emotion: .joyous)?.lastPathComponent == "Happy.png")
+        #expect(FileManager.default.fileExists(atPath: cache.appendingPathComponent("portrait/0025/.missing-Joyous").path))
+        try FileManager.default.removeItem(at: remote)  // offline: the cached Happy still answers
+        #expect(await store.portrait(for: "0025", emotion: .joyous)?.lastPathComponent == "Happy.png")
+    }
+
+    @Test func noPortraitMeansNil() async throws {
+        let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: try portraitRemote([]))
+        #expect(await store.portrait(for: "0025", emotion: .sad) == nil)
+    }
 }
