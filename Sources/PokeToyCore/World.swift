@@ -51,15 +51,20 @@ public struct World: Sendable {
     public let surfaces: [Surface]
     /// Left edge of each window (by window number), so pets can ride windows that move sideways.
     public let windowOrigins: [Int: CGFloat]
+    /// The frontmost window of the frontmost app (pets prefer walking on it), if any.
+    public let activeWindowID: Int?
 
-    public init(screens: [ScreenInfo], surfaces: [Surface], windowOrigins: [Int: CGFloat] = [:]) {
+    public init(screens: [ScreenInfo], surfaces: [Surface], windowOrigins: [Int: CGFloat] = [:],
+                activeWindowID: Int? = nil) {
         self.screens = screens
         self.surfaces = surfaces
         self.windowOrigins = windowOrigins
+        self.activeWindowID = activeWindowID
     }
 
     /// Builds surfaces from screens and windows ordered front to back.
-    public static func build(screens: [ScreenInfo], windows: [WindowInfo], primaryScreenHeight: CGFloat) -> World {
+    public static func build(screens: [ScreenInfo], windows: [WindowInfo], primaryScreenHeight: CGFloat,
+                             activeWindowID: Int? = nil) -> World {
         var surfaces: [Surface] = []
         for (index, screen) in screens.enumerated() {
             surfaces.append(Surface(id: -(index * 2 + 1), minX: screen.frame.minX, maxX: screen.frame.maxX,
@@ -93,7 +98,7 @@ public struct World: Sendable {
                                         y: top, kind: .window))
             }
         }
-        return World(screens: screens, surfaces: surfaces, windowOrigins: origins)
+        return World(screens: screens, surfaces: surfaces, windowOrigins: origins, activeWindowID: activeWindowID)
     }
 
     private static func subtract(_ segments: [(CGFloat, CGFloat)], _ lo: CGFloat, _ hi: CGFloat) -> [(CGFloat, CGFloat)] {

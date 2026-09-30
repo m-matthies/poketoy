@@ -115,6 +115,8 @@ public struct PetBrain: Sendable {
     public static let hardLandingDrop: CGFloat = 150
     public static let maxJumpRise: CGFloat = 320
     public static let maxJumpReach: CGFloat = 360
+    /// Chance that a wandering pet heads for the active window instead of a random spot.
+    public static let activeWindowPreference = 0.6
 
     public let personality: Personality
     public private(set) var state: State = .idle(remaining: 1)
@@ -398,8 +400,15 @@ public struct PetBrain: Sendable {
             enterIdle(&body)
             return
         }
+        let active = personality == .pet ? ctx.world.activeWindowID : nil
+        let onActive = active != nil && surface.id == active
+        if let active, !onActive, rng.unit() < Self.activeWindowPreference,
+           headFor(activeWindow: active, from: surface, ctx, &body) {
+            return
+        }
         let roll = rng.unit()
-        if roll < (personality == .wild ? 0.35 : 0.2) {
+        let jumpChance = personality == .wild ? 0.35 : (onActive ? 0.03 : 0.2)
+        if roll < jumpChance {
             let options = reachable(from: body.position, ctx)
             if !options.isEmpty {
                 let pick = options[min(Int(rng.unit() * Double(options.count)), options.count - 1)]
@@ -408,7 +417,7 @@ public struct PetBrain: Sendable {
             }
         }
         let target: CGFloat
-        if surface.kind == .window && roll > 0.85 {
+        if surface.kind == .window && roll > 0.85 && !onActive {
             // Stroll off the edge of the window.
             target = rng.unit() < 0.5 ? surface.minX - ctx.halfWidth * 2 : surface.maxX + ctx.halfWidth * 2
         } else {
@@ -419,6 +428,34 @@ public struct PetBrain: Sendable {
         let speed = Self.walkSpeed * speedFactor
         state = .walk(targetX: target, speed: speed)
         walk(toward: target, speed: speed, dt: ctx.dt, &body)
+    }
+
+    /// Moves toward the active window's top: jumps if it is reachable, walks underneath it if it is above
+    /// but too far, or walks off this window's nearer edge if it is below. Returns false if there is no way.
+    private mutating func headFor(activeWindow active: Int, from surface: Surface, _ ctx: BrainContext,
+                                  _ body: inout Body) -> Bool {
+        let p = body.position
+        let tops = ctx.world.surfaces.filter { $0.id == active && $0.width >= ctx.halfWidth * 2 }
+        guard let nearest = tops.min(by: { $0.distance(toX: p.x) < $1.distance(toX: p.x) }) else { return false }
+        if let top = reachable(from: p, ctx).filter({ $0.id == active })
+            .min(by: { $0.distance(toX: p.x) < $1.distance(toX: p.x) }) {
+            launch(to: top, x: top.minX + CGFloat(rng.unit()) * top.width, halfWidth: ctx.halfWidth, &body)
+            return true
+        }
+        let speed = Self.walkSpeed * speedFactor
+        if nearest.y > p.y {
+            let under = clamp(min(max(p.x, nearest.minX + ctx.halfWidth), nearest.maxX - ctx.halfWidth),
+                              on: surface, ctx.halfWidth)
+            guard abs(under - p.x) > 4 else { return false }
+            state = .walk(targetX: under, speed: speed)
+            walk(toward: under, speed: speed, dt: ctx.dt, &body)
+            return true
+        }
+        guard surface.kind == .window else { return false }
+        let target = nearest.midX < p.x ? surface.minX - ctx.halfWidth * 2 : surface.maxX + ctx.halfWidth * 2
+        state = .walk(targetX: target, speed: speed)
+        walk(toward: target, speed: speed, dt: ctx.dt, &body)
+        return true
     }
 
     private mutating func walk(toward targetX: CGFloat, speed: CGFloat, dt: Double, _ body: inout Body) {

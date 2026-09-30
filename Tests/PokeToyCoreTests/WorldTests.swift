@@ -96,4 +96,11 @@ import Testing
         let world = World.build(screens: [screen], windows: [window], primaryScreenHeight: 800)
         #expect(world.windowOrigins[42] == 100)
     }
+
+    @Test func recordsTheActiveWindow() {
+        let window = WindowInfo(id: 42, cgBounds: CGRect(x: 100, y: 200, width: 300, height: 400))
+        #expect(World.build(screens: [screen], windows: [window], primaryScreenHeight: 800, activeWindowID: 42)
+            .activeWindowID == 42)
+        #expect(World.build(screens: [screen], windows: [window], primaryScreenHeight: 800).activeWindowID == nil)
+    }
 }
