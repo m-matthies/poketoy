@@ -20,6 +20,8 @@ public struct Item: Identifiable, Sendable {
         /// A Poké Ball holding a wild Pokémon; `caught` was decided when it hit.
         case wobbling(petID: UUID, wobblesLeft: Int, caught: Bool, timer: Double)
         case fading(remaining: Double)
+        /// The fetch ball in a pet's mouth.
+        case carried(petID: UUID)
     }
 
     public static let wobbleDuration = 0.6

@@ -119,6 +119,8 @@ public enum PlaygroundEvent: Equatable, Sendable {
     case roundEnded
     /// A pet shows a feeling (drawn as a bubble by the app).
     case emotion(petID: UUID, Emotion)
+    /// A pet brought the fetch ball back.
+    case fetched(petID: UUID)
 }
 
 /// A social moment in progress between two pets.
@@ -168,6 +170,8 @@ public struct Playground: Sendable {
     /// Pets allowed to walk through others until the given clock time (only when absolutely needed).
     var passThrough: [UUID: Double] = [:]
     var blockTimes: [UUID: [Double]] = [:]
+    /// Pets racing for the fetch ball.
+    var fetchRacers: Set<UUID> = []
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -269,7 +273,7 @@ public struct Playground: Sendable {
     }
 
     public mutating func handle(_ event: ItemEvent, item id: UUID) {
-        guard let i = itemIndex(of: id), items[i].kind.isTreat else { return }
+        guard let i = itemIndex(of: id), items[i].kind.isHandheld else { return }
         switch event {
         case .pressed:
             items[i].state = .held
@@ -325,12 +329,14 @@ public struct Playground: Sendable {
         gameRulesBeforePhysics(dt: dt, world: world)
         socialRules(dt: dt, world: world)
         feedingRules(world: world)
+        fetchRules(world: world)
         passingRules(dt: dt, world: world)
     }
 
     /// Rules that react to where things ended up (collisions, Poké Ball hits).
     mutating func rulesAfterPhysics(dt: Double, world: World) {
         collisionRules(world: world)
+        carryToy()
         gameRulesAfterPhysics(dt: dt)
     }
 
@@ -357,14 +363,14 @@ public struct Playground: Sendable {
     private mutating func stepItems(dt: Double, world: World) {
         for i in items.indices {
             switch items[i].state {
-            case .held:
+            case .held, .carried:
                 continue
             case .fading(let remaining):
                 items[i].state = .fading(remaining: remaining - dt)
             default:
                 break
             }
-            if items[i].kind.isTreat, items[i].state == .free, items[i].body.isGrounded { items[i].age += dt }
+            if items[i].kind.isHandheld, items[i].state == .free, items[i].body.isGrounded { items[i].age += dt }
             let landed = Physics.step(&items[i].body, dt: CGFloat(dt), world: world)
             if landed && items[i].state == .flying {
                 items[i].state = .fading(remaining: 1.5)  // a ball that hit nothing
@@ -372,6 +378,7 @@ public struct Playground: Sendable {
         }
         items.removeAll {
             if case .fading(let remaining) = $0.state { return remaining <= 0 }
+            if $0.kind == .toyBall { return $0.age > Self.toyLifetime }  // forgotten
             return $0.kind.isTreat && $0.age > Self.treatLifetime  // spoiled
         }
     }

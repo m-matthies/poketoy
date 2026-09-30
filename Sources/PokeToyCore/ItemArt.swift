@@ -2,9 +2,12 @@ import CoreGraphics
 import Foundation
 
 public enum ItemKind: String, CaseIterable, Sendable {
-    case apple, oranBerry, pokeBall
+    case apple, oranBerry, pokeBall, toyBall
 
-    public var isTreat: Bool { self != .pokeBall }
+    public var isTreat: Bool { self == .apple || self == .oranBerry }
+
+    /// Treats and the fetch ball can be picked up and thrown by the user; Poké Balls can't.
+    public var isHandheld: Bool { self != .pokeBall }
 }
 
 /// Pixel art for items, drawn from text grids so no asset files are needed.
@@ -14,7 +17,7 @@ public enum ItemArt {
     static let palette: [Character: (UInt8, UInt8, UInt8)] = [
         "K": (24, 20, 28), "R": (224, 48, 56), "r": (150, 24, 40), "W": (248, 248, 248),
         "H": (255, 255, 255), "G": (72, 168, 72), "B": (120, 80, 40), "b": (64, 120, 232),
-        "d": (32, 64, 160),
+        "d": (32, 64, 160), "Y": (248, 208, 48),
     ]
 
     static let grids: [ItemKind: [String]] = [
@@ -44,6 +47,20 @@ public enum ItemArt {
             ".KbbbbbdddK.",
             "..KbbbdddK..",
             "...KKKKK....",
+            "............",
+        ],
+        .toyBall: [
+            "............",
+            "....KKKK....",
+            "..KKbbbbKK..",
+            ".KbHbbbbbbK.",
+            ".KbHbbbbbbK.",
+            "KYYYYYYYYYYK",
+            "KYYYYYYYYYYK",
+            ".KbbbbbbbbK.",
+            ".KbbbbbbdbK.",
+            "..KKbbbdKK..",
+            "....KKKK....",
             "............",
         ],
         .pokeBall: [

@@ -98,7 +98,7 @@ extension Playground {
 
     /// How pet `i` gets to a treat lying on another surface: a leap of any height up to it, or walking off
     /// its own surface's edge toward it (dropping down, or stepping across to the next screen).
-    private func route(for i: Int, to treat: Item, world: World) -> TreatRoute? {
+    func route(for i: Int, to treat: Item, world: World) -> TreatRoute? {
         let pet = pets[i]
         guard let treatSurfaceID = treat.body.surfaceID,
               let target = world.surface(id: treatSurfaceID, containingX: treat.body.position.x) else { return nil }
