@@ -2,3 +2,13 @@
 *.app
 .DS_Store
 build/
+# Local tooling and editor settings, never published
+.superpowers/
+.vscode/
+.claude/
+.env
+.env.*
+*.p12
+*.pem
+*.key
+*.mobileprovision
