@@ -91,8 +91,19 @@ swift build         # debug build of the app executable
 `Sources/PokeToyCore` holds all testable logic (sprite parsing, world geometry, physics, behavior,
 settings, downloads). `Sources/PokeToy` is the AppKit layer.
 
-## Credits
+## Credits & licenses
 
-Sprites and portraits: PMDCollab SpriteCollab contributors, licensed
-[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Pokémon is © Nintendo / Creatures Inc. / GAME FREAK inc.
-This is a non-commercial fan project.
+- **Sprites and portraits:** from [PMDCollab SpriteCollab](https://sprites.pmdcollab.org/)
+  ([GitHub](https://github.com/PMDCollab/SpriteCollab)), made by its many artists and licensed under
+  [Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
+  The 200 fully complete species ship with the app in `Resources/Sprites` and `Resources/Portraits` (only the
+  animation sheets and portraits PokeToy uses, unmodified); others are downloaded from SpriteCollab when needed. The
+  artists of every bundled Pokémon are listed in [`Resources/CREDITS.md`](Resources/CREDITS.md) (also inside the app,
+  and summed up in its About window). `scripts/bundle-sprites.py` refreshes the bundle and the credits.
+- **Because of CC BY-NC, the sprites — and so PokeToy with them — may not be used commercially** (no selling it, no
+  paid distribution, no ads).
+- **Pokémon data** (evolutions, types, Pokédex texts): [PokeAPI](https://pokeapi.co/).
+- **Pokémon** and Pokémon character names are trademarks of Nintendo, Creatures Inc. and GAME FREAK inc. PokeToy is
+  an unofficial, non-commercial fan project and is not affiliated with or endorsed by them.
+- **PokeToy's source code** is MIT licensed (see [LICENSE](LICENSE)); that license covers the code only, not the
+  sprites and portraits.

@@ -39,3 +39,69 @@ import Testing
         }
     }
 }
+
+@Suite struct BundledCollectionTests {
+    let resources = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Resources")
+
+    var bundled: [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: resources.appendingPathComponent("Sprites").path)) ?? [])
+            .filter { $0.allSatisfy(\.isNumber) }.sorted()
+    }
+
+    @Test func theCompleteCollectionIsBundled() throws {
+        #expect(bundled.count >= 200)
+        for path in bundled {
+            #expect(SpriteStore.isComplete(resources.appendingPathComponent("Sprites/\(path)")), "\(path)")
+            let normal = resources.appendingPathComponent("Portraits/\(path)/Normal.png")
+            #expect(FileManager.default.fileExists(atPath: normal.path), "\(path) has no Normal portrait")
+        }
+    }
+
+    @Test func everyBundledPokemonHasANameAndCredits() throws {
+        let names = try SpriteStore.bundledNames(in: resources.appendingPathComponent("Sprites"))
+        let credits = try String(contentsOf: resources.appendingPathComponent("CREDITS.md"), encoding: .utf8)
+        #expect(credits.contains("CC BY-NC 4.0") && credits.contains("PMDCollab SpriteCollab"))
+        #expect(!credits.contains("<@"))  // no Discord ids
+        for path in bundled {
+            #expect(names[path] != nil, "\(path) has no name")
+            #expect(credits.contains("| \(path) |"), "\(path) isn't credited")
+        }
+    }
+}
+
+@Suite struct BundledCatalogTests {
+    let anims = [TestAnim(name: "Walk"), TestAnim(name: "Idle")]
+
+    func bundle() throws -> URL {
+        let bundle = makeTempDirectory()
+        try writeSpriteDirectory(at: bundle.appendingPathComponent("0004"), anims: anims)
+        try Data(#"{"0004": "Charmander"}"#.utf8).write(to: bundle.appendingPathComponent("names.json"))
+        return bundle
+    }
+
+    @Test func offlineWithoutACatalogTheBundledPokemonAreTheCatalog() async throws {
+        let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: URL(fileURLWithPath: "/nonexistent-remote"),
+                                bundledSprites: try bundle())
+        let catalog = try await store.catalog()
+        #expect(catalog == [CatalogEntry(path: "0004", displayName: "Charmander", isComplete: true)])
+    }
+
+    @Test func bundledSpritesDontCountAsDownloads() async throws {
+        let cache = makeTempDirectory()
+        try writeSpriteDirectory(at: cache.appendingPathComponent("sprite/0133"), anims: anims)
+        let store = SpriteStore(cacheDirectory: cache, remoteBase: URL(fileURLWithPath: "/nonexistent-remote"),
+                                bundledSprites: try bundle())
+        #expect(await store.cachedSpritePaths() == ["0004", "0133"])
+        #expect(await store.downloadedSpritePaths() == ["0133"])
+    }
+
+    @Test func pokedexSeenSpeciesAreRemembered() throws {
+        var settings = Settings.default
+        settings.seen = ["0016", "0133"]
+        let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
+        #expect(again.seen == ["0016", "0133"])
+        #expect(try JSONDecoder().decode(Settings.self, from: Data(#"{"scale": 2}"#.utf8)).seen.isEmpty)
+    }
+}

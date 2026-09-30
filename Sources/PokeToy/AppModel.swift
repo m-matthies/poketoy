@@ -979,9 +979,10 @@ final class AppModel {
         }
     }
 
-    /// Sprite paths downloaded so far (and the bundled ones), for the Pokédex.
+    /// Species the player has seen, for the Pokédex: wild Pokémon met in catch rounds and sprites downloaded (the
+    /// ones bundled with the app don't count until they're met).
     func downloadedSpritePaths() async -> [String] {
-        await store.cachedSpritePaths()
+        await store.downloadedSpritePaths() + settings.seen
     }
 
     /// A species' short description ("Electric · Mouse Pokémon — …"), nil when PokeAPI can't be reached.
@@ -1150,6 +1151,10 @@ final class AppModel {
             switch event {
             case .wildSpawned(let id, let path):
                 wildPaths[id] = path
+                if let species = Pokedex.key(forPath: path), !settings.seen.contains(species) {
+                    settings.seen.append(species)  // met in the wild: seen in the Pokédex
+                    friendshipsChanged = true  // saves at the end of the tick
+                }
                 if let sprites = wildSprites[path] {
                     let view = PetController(id: id, sprites: sprites, model: self, interactive: false)
                     view.show()

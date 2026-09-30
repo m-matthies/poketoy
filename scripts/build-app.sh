@@ -13,6 +13,7 @@ cp "$BIN_DIR/PokeToy" "$APP/Contents/MacOS/PokeToy"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp -R Resources/Sprites "$APP/Contents/Resources/Sprites"
 cp -R Resources/Portraits "$APP/Contents/Resources/Portraits"
+cp Resources/CREDITS.md Resources/Credits.html "$APP/Contents/Resources/"  # Credits.html shows in the About window
 
 ICONSET="$(mktemp -d)/AppIcon.iconset"
 swift scripts/make-icon.swift Resources/Icon/portrait-0025.png "$ICONSET"
