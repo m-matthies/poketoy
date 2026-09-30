@@ -23,13 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
     }
 
-    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        menus.makeDockMenu()
-    }
-
     /// Opening the app again (e.g. from Finder) shows hidden pets, else the starter choice (if still open) or the Pokédex.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if model.settings.hidden {
+        if model.petsHidden {
             model.setHidden(false)
         } else if model.needsStarter {
             model.showStarterChoice()

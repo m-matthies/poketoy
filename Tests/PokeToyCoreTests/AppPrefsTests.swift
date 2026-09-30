@@ -61,11 +61,21 @@ import Testing
         #expect(Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(controlKey | optionKey)).keyEquivalent == "b")
     }
 
-    @Test func shortcutsNeedACommandControlOrOptionKey() {
+    @Test func shortcutsNeedAControlOrOptionKey() {
         #expect(!Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: 0).isValid)
         #expect(!Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(shiftKey)).isValid)
         #expect(Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(optionKey)).isValid)
+        #expect(Shortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(controlKey | cmdKey)).isValid)
         #expect(!Shortcut(keyCode: UInt32(kVK_Shift), modifiers: UInt32(controlKey)).isValid)  // a modifier alone
+        // ⌘ combinations belong to apps (⌘W, ⌘Q, ⌘C…): never taken system-wide.
+        #expect(!Shortcut(keyCode: UInt32(kVK_ANSI_W), modifiers: UInt32(cmdKey)).isValid)
+        #expect(!Shortcut(keyCode: UInt32(kVK_ANSI_G), modifiers: UInt32(cmdKey | shiftKey)).isValid)
+    }
+
+    @Test func savedCommandOnlyShortcutsFallBackToTheDefault() throws {
+        let json = #"{"preferences": {"feedShortcut": {"keyCode": 13, "modifiers": 256}}}"#  // ⌘W
+        let prefs = try JSONDecoder().decode(Settings.self, from: Data(json.utf8)).preferences
+        #expect(prefs.feedShortcut == Preferences().feedShortcut)
     }
 
     // MARK: - Auto-hide
@@ -87,6 +97,30 @@ import Testing
         let screens = [CGRect(x: 0, y: 0, width: 1440, height: 900), CGRect(x: 1440, y: 0, width: 1920, height: 1080)]
         #expect(AutoHide.coversAScreen(CGRect(x: 1440, y: 0, width: 1920, height: 1080), screens: screens))
         #expect(!AutoHide.coversAScreen(CGRect(x: 0, y: 25, width: 1440, height: 875), screens: screens))  // just zoomed
+    }
+
+    @Test func fullScreenBelowACameraNotchCounts() {
+        let notched = [CGRect(x: 0, y: 0, width: 1512, height: 982)]
+        let belowNotch = CGRect(x: 0, y: 38, width: 1512, height: 944)
+        #expect(!AutoHide.coversAScreen(belowNotch, screens: notched))
+        #expect(AutoHide.coversAScreen(belowNotch, screens: notched, topInsets: [38]))
+        #expect(AutoHide.coversAScreen(CGRect(x: 0, y: 0, width: 1512, height: 982), screens: notched, topInsets: [38]))
+        #expect(!AutoHide.coversAScreen(CGRect(x: 0, y: 25, width: 1512, height: 957), screens: notched, topInsets: [38]))
+    }
+
+    @Test func showingPetsOverridesAutoHideUntilTheFrontAppChanges() {
+        let prefs = Preferences()
+        var state = AutoHideState()
+        func hidden(_ app: String, game: Bool = false) -> Bool {
+            state.update(frontmost: app, isFullScreen: false, preferences: prefs, gameRunning: game)
+        }
+        let atFirst = hidden("us.zoom.xos")
+        state.userShowed(frontmost: "us.zoom.xos")
+        let afterShowing = hidden("us.zoom.xos")
+        let inSafari = hidden("com.apple.Safari")
+        let backInZoom = hidden("us.zoom.xos")  // later: hidden again
+        let duringAGame = hidden("us.zoom.xos", game: true)
+        #expect(atFirst && !afterShowing && !inSafari && backInZoom && !duringAGame)
     }
 
     // MARK: - Pets

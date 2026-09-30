@@ -58,7 +58,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   - **Pets…** — rename your pets (the name stays when they evolve) and see their stats: species, together since,
     treats eaten, best friend, evolution progress; release one from here too.
   - **Preferences…** — pet speed; how quickly pets nap (often, normal, rarely, never); all screens or the main screen
-    only; the Feed, Catch Game and Show/Hide shortcuts (record your own or clear them); hide pets while an app is full
+    only; the Feed, Catch Game and Show/Hide shortcuts (record your own — they need ⌃ or ⌥ — or clear them); hide pets while an app is full
     screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); launch at login;
     battery saver (30 fps on battery, paused while the screen is locked).
   - **Reset Game…** — after asking, releases every pet and erases the Pokédex, scores, friendships, settings and downloaded

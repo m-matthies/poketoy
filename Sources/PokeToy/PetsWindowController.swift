@@ -9,7 +9,9 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     private var portraits: [String: NSImage] = [:]
     private var requestedPortraits: Set<String> = []
     private let header = NSTextField(labelWithString: "")
-    private let table = NSTableView()
+    private let table = PetsTableView()
+    /// A refresh was skipped while a name was being typed; catch up when typing ends.
+    private var needsReload = false
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -56,6 +58,11 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
             scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24),
         ])
         window.center()
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didDeminiaturizeNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshIfVisible() }
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -70,12 +77,19 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     }
 
     func refreshIfVisible() {
-        // Don't pull the rug out from under a name being typed.
-        guard window?.isVisible == true, !(window?.firstResponder is NSTextView) else { return }
+        guard let window, window.isVisible || window.isMiniaturized else { return }
+        // Don't pull the rug out from under a name being typed: catch up afterwards.
+        if isEditing {
+            needsReload = true
+            return
+        }
         reload()
     }
 
+    private var isEditing: Bool { window?.firstResponder is NSTextView }
+
     private func reload() {
+        needsReload = false
         pets = model.settings.pets
         header.stringValue = pets.isEmpty ? "No pets yet — catch some in the Catch Game!"
             : "\(pets.count) of \(Playground.maxOwnPets) pets"
@@ -136,6 +150,10 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
         Task {
             guard let url = await model.portrait(forPet: path), let image = NSImage(contentsOf: url) else { return }
             portraits[path] = image
+            if isEditing {
+                needsReload = true  // reloading the row would throw away what's being typed
+                return
+            }
             for (index, pet) in pets.enumerated() where pet.spritePath == path {
                 table.reloadData(forRowIndexes: [index], columnIndexes: [0])
             }
@@ -147,23 +165,22 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField, pets.indices.contains(field.tag) else { return }
         let pet = pets[field.tag]
-        guard field.stringValue != pet.name else { return }
-        model.rename(pet.id, to: field.stringValue)
+        if field.stringValue != pet.name { model.rename(pet.id, to: field.stringValue) }
         window?.makeFirstResponder(nil)
-        reload()
+        reload()  // also catches up on anything skipped while typing
     }
 
     @objc private func release(_ sender: NSButton) {
         guard pets.indices.contains(sender.tag) else { return }
-        let pet = pets[sender.tag]
-        let alert = NSAlert()
-        alert.messageText = "Release \(pet.name)?"
-        alert.informativeText = "It leaves for good. Its Pokédex entry stays."
-        alert.addButton(withTitle: "Release").hasDestructiveAction = true
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        model.removePet(pet.id)
+        model.confirmRelease(pets[sender.tag].id)
         reload()
+    }
+}
+
+/// Lets a click go straight into a row's name field (a plain table would select the row first).
+private final class PetsTableView: NSTableView {
+    override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool {
+        responder is NSTextField || super.validateProposedFirstResponder(responder, for: event)
     }
 }
 
