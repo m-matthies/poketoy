@@ -35,7 +35,7 @@ extension Playground {
             } else {
                 if game!.isActive { keepOwnPetsSitting() }
                 let wildCount = pets.filter { $0.role == .wild }.count
-                if let spec = game!.spawn(dt: dt, wildCount: wildCount) { spawnWild(spec, world: world) }
+                if let pick = game!.spawn(dt: dt, wildCount: wildCount) { spawnWild(pick.spec, world: world) }
             }
         }
         driveWild(dt: dt, world: world)

@@ -6,11 +6,41 @@ public struct WildSpec: Equatable, Sendable {
     public let path: String
     public let displayName: String
     public let metrics: PetMetrics
+    public let isLegendary: Bool
+    /// SpriteCollab path of its shiny sprites, if it has them (then 1 in 64 spawns are shiny).
+    public let shinyPath: String?
+    /// Flying types glide through the air instead of walking.
+    public let canFly: Bool
 
-    public init(path: String, displayName: String, metrics: PetMetrics) {
+    public init(path: String, displayName: String, metrics: PetMetrics, isLegendary: Bool = false,
+                shinyPath: String? = nil, canFly: Bool = false) {
         self.path = path
         self.displayName = displayName
         self.metrics = metrics
+        self.isLegendary = isLegendary
+        self.shinyPath = shinyPath
+        self.canFly = canFly
+    }
+}
+
+/// Better balls come with combos.
+public enum BallTier: Int, Sendable {
+    case poke, great, ultra
+
+    public var catchChance: Double {
+        switch self {
+        case .poke: return 0.6
+        case .great: return 0.75
+        case .ultra: return 0.9
+        }
+    }
+
+    public var itemKind: ItemKind {
+        switch self {
+        case .poke: return .pokeBall
+        case .great: return .greatBall
+        case .ultra: return .ultraBall
+        }
     }
 }
 
@@ -53,7 +83,12 @@ public struct CatchGame: Sendable {
     public static let roundLength = 60.0
     public static let maxWild = 3
     public static let maxBallsInFlight = 8
-    public static let defaultCatchChance = 0.6
+    public static let defaultCatchChance = BallTier.poke.catchChance
+    public static let legendaryChance = 0.05
+    public static let shinyChance = 1.0 / 64
+    public static let berriesPerRound = 3
+    public static let calmBonus = 0.15
+    public static let firstThrowBonus = 50
     public static let hitPoints = 25
     public static let catchPoints = 100
     public static let spawnInterval: ClosedRange<Double> = 4...7
@@ -63,7 +98,11 @@ public struct CatchGame: Sendable {
     public private(set) var phase: Phase = .countdown(remaining: CatchGame.countdownLength)
     public private(set) var score = 0
     public private(set) var catches: [CatchRecord] = []
-    var catchChance = CatchGame.defaultCatchChance
+    /// Consecutive hits; a ball that hits nothing resets it.
+    public private(set) var combo = 0
+    public private(set) var berriesLeft = CatchGame.berriesPerRound
+    /// Overrides every catch chance (tests).
+    var catchChance: Double?
     private var rng: SplitMix64
     private var nextSpawnIn = 0.5
     private var endRequested = false
@@ -109,13 +148,45 @@ public struct CatchGame: Sendable {
         return false
     }
 
-    /// A wild Pokémon to spawn this step, if one is due and there is room.
-    public mutating func spawn(dt: Double, wildCount: Int) -> WildSpec? {
+    /// A wild Pokémon to spawn this step, if one is due and there is room: legendaries about 5% of the time,
+    /// and 1 in 64 is shiny when it has shiny sprites.
+    public mutating func spawn(dt: Double, wildCount: Int) -> (spec: WildSpec, shiny: Bool)? {
         guard isPlaying, !roster.isEmpty else { return nil }
         nextSpawnIn -= dt
         guard nextSpawnIn <= 0, wildCount < Self.maxWild else { return nil }
         nextSpawnIn = random(in: Self.spawnInterval)
-        return roster[min(Int(rng.unit() * Double(roster.count)), roster.count - 1)]
+        let legendaries = roster.filter(\.isLegendary)
+        let regulars = roster.filter { !$0.isLegendary }
+        let pool = !legendaries.isEmpty && (regulars.isEmpty || rng.unit() < Self.legendaryChance) ? legendaries : regulars
+        let spec = pool[min(Int(rng.unit() * Double(pool.count)), pool.count - 1)]
+        let shiny = spec.shinyPath != nil && rng.unit() < Self.shinyChance
+        return (spec, shiny)
+    }
+
+    /// The ball the player throws next.
+    public var ballTier: BallTier {
+        combo >= 5 ? .ultra : combo >= 3 ? .great : .poke
+    }
+
+    /// Points multiplier for the current combo: +25% per consecutive hit after the first, at most ×2.
+    public var comboMultiplier: Double {
+        combo < 1 ? 1 : min(2, 1 + 0.25 * Double(combo - 1))
+    }
+
+    /// A ball landed without hitting anything.
+    public mutating func registerMiss() {
+        combo = 0
+    }
+
+    /// Takes one of the round's Razz Berries; false when none are left.
+    public mutating func useBerry() -> Bool {
+        guard berriesLeft > 0 else { return false }
+        berriesLeft -= 1
+        return true
+    }
+
+    public func catchChance(tier: BallTier, calmed: Bool) -> Double {
+        catchChance ?? min(1, tier.catchChance + (calmed ? Self.calmBonus : 0))
     }
 
     public mutating func wildLifetime() -> Double {
@@ -123,8 +194,8 @@ public struct CatchGame: Sendable {
     }
 
     /// Decides at the moment of a hit whether the Pokémon will be caught and how often the ball wobbles first.
-    public mutating func rollCatch() -> (caught: Bool, wobbles: Int) {
-        let caught = rng.unit() < catchChance
+    public mutating func rollCatch(tier: BallTier = .poke, calmed: Bool = false) -> (caught: Bool, wobbles: Int) {
+        let caught = rng.unit() < catchChance(tier: tier, calmed: calmed)
         let wobbles = 1 + min(Int(rng.unit() * 3), 2)
         return (caught, wobbles)
     }
@@ -133,13 +204,21 @@ public struct CatchGame: Sendable {
         rng.unit()
     }
 
-    public mutating func recordHit() {
-        score += Self.hitPoints
+    public mutating func recordHit(isLegendary: Bool = false, isShiny: Bool = false) {
+        combo += 1
+        score += points(Self.hitPoints, isLegendary: isLegendary, isShiny: isShiny)
     }
 
-    public mutating func recordCatch(_ record: CatchRecord) {
-        score += Self.catchPoints
+    public mutating func recordCatch(_ record: CatchRecord, isLegendary: Bool = false, firstThrow: Bool = false) {
+        score += points(Self.catchPoints, isLegendary: isLegendary, isShiny: record.isShiny)
+        if firstThrow { score += Self.firstThrowBonus }
         catches.append(record)
+    }
+
+    /// Base points × 3 for legendaries × 2 for shinies × the combo multiplier.
+    private func points(_ base: Int, isLegendary: Bool, isShiny: Bool) -> Int {
+        let rarity = (isLegendary ? 3.0 : 1.0) * (isShiny ? 2.0 : 1.0)
+        return Int((Double(base) * rarity * comboMultiplier).rounded())
     }
 
     /// How many of `catches` can still become pets without exceeding `cap`.
