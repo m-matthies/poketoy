@@ -77,4 +77,57 @@ import Testing
         let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: URL(fileURLWithPath: "/nonexistent-remote"))
         await #expect(throws: (any Error).self) { try await store.catalog() }
     }
+
+    @Test func offlineUsesAnIncompleteCache() async throws {
+        let cache = makeTempDirectory()
+        let dir = cache.appendingPathComponent("sprite/0025")
+        try writeSpriteDirectory(at: dir, anims: [TestAnim(name: "Walk"), TestAnim(name: "Idle"), TestAnim(name: "Eat")])
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("Eat-Anim.png"))
+        #expect(!SpriteStore.isComplete(dir))
+        #expect(SpriteStore.isUsable(dir))
+        let store = SpriteStore(cacheDirectory: cache, remoteBase: URL(fileURLWithPath: "/nonexistent-remote"))
+        let found = try await store.spriteDirectory(for: "0025")
+        #expect(found.standardizedFileURL == dir.standardizedFileURL)
+        #expect(try SpriteSet(directory: found).animation(.eat).info.name == "Idle")
+    }
+
+    @Test func offlineCacheWithoutIdleOrWalkIsNotUsed() async throws {
+        let cache = makeTempDirectory()
+        let dir = cache.appendingPathComponent("sprite/0025")
+        try writeSpriteDirectory(at: dir, anims: [TestAnim(name: "Walk"), TestAnim(name: "Idle")])
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("Walk-Anim.png"))
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("Idle-Anim.png"))
+        #expect(!SpriteStore.isUsable(dir))
+        let store = SpriteStore(cacheDirectory: cache, remoteBase: URL(fileURLWithPath: "/nonexistent-remote"))
+        await #expect(throws: (any Error).self) { try await store.spriteDirectory(for: "0025") }
+    }
+
+    @Test func cachedSpritePathsListUsableDirectories() async throws {
+        let cache = makeTempDirectory()
+        try writeSpriteDirectory(at: cache.appendingPathComponent("sprite/0025"), anims: anims)
+        try writeSpriteDirectory(at: cache.appendingPathComponent("sprite/0025/0000/0001"), anims: anims)
+        let broken = cache.appendingPathComponent("sprite/0099")
+        try writeSpriteDirectory(at: broken, anims: [TestAnim(name: "Walk")])
+        try FileManager.default.removeItem(at: broken.appendingPathComponent("Walk-Anim.png"))
+        let bundle = makeTempDirectory()
+        try writeSpriteDirectory(at: bundle.appendingPathComponent("0133"), anims: anims)
+        let store = SpriteStore(cacheDirectory: cache, remoteBase: URL(fileURLWithPath: "/nonexistent-remote"),
+                                bundledSprites: bundle)
+        #expect(await store.cachedSpritePaths() == ["0025", "0025/0000/0001", "0133"])
+    }
+
+    @Test func timeoutVariantReturnsWhenFast() async throws {
+        let bundle = makeTempDirectory()
+        try writeSpriteDirectory(at: bundle.appendingPathComponent("0025"), anims: anims)
+        let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: URL(fileURLWithPath: "/nonexistent-remote"),
+                                bundledSprites: bundle)
+        let dir = try await store.spriteDirectory(for: "0025", timeout: 5)
+        #expect(SpriteStore.isComplete(dir))
+    }
+
+    @Test func errorsReadWell() {
+        #expect(SpriteStoreError.http(status: 404, path: "x").localizedDescription == "Not found on SpriteCollab.")
+        #expect(SpriteStoreError.http(status: 500, path: "x").localizedDescription == "SpriteCollab answered with HTTP 500.")
+        #expect(SpriteStoreError.timedOut.localizedDescription == "SpriteCollab took too long to answer.")
+    }
 }

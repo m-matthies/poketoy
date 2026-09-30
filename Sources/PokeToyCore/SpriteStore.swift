@@ -1,7 +1,16 @@
 import Foundation
 
-public enum SpriteStoreError: Error, Equatable {
+public enum SpriteStoreError: Error, Equatable, LocalizedError {
     case http(status: Int, path: String)
+    case timedOut
+
+    public var errorDescription: String? {
+        switch self {
+        case .http(404, _): return "Not found on SpriteCollab."
+        case .http(let status, _): return "SpriteCollab answered with HTTP \(status)."
+        case .timedOut: return "SpriteCollab took too long to answer."
+        }
+    }
 }
 
 /// Fetches SpriteCollab data and keeps it in a local cache.
@@ -44,25 +53,63 @@ public actor SpriteStore {
         }
     }
 
-    /// A local directory with everything `SpriteSet` needs for `path`, downloading missing files.
+    /// A local directory with what `SpriteSet` needs for `path`, downloading missing files.
+    /// Offline, an incomplete but usable cached or bundled copy is returned instead.
     public func spriteDirectory(for path: String) async throws -> URL {
         let cached = cacheDirectory.appendingPathComponent("sprite").appendingPathComponent(path, isDirectory: true)
+        let bundled = bundledSprites?.appendingPathComponent(path, isDirectory: true)
         if Self.isComplete(cached) { return cached }
-        if let bundled = bundledSprites?.appendingPathComponent(path, isDirectory: true), Self.isComplete(bundled) {
-            return bundled
+        if let bundled, Self.isComplete(bundled) { return bundled }
+        do {
+            let xml = try await fetch("sprite/\(path)/AnimData.xml")
+            let animData = try AnimData(xml: xml)
+            try FileManager.default.createDirectory(at: cached, withIntermediateDirectories: true)
+            for file in SpriteSet.requiredFiles(for: animData).sorted() {
+                let target = cached.appendingPathComponent(file)
+                if FileManager.default.fileExists(atPath: target.path) { continue }
+                try await fetch("sprite/\(path)/\(file)").write(to: target, options: .atomic)
+            }
+            // Written last: its presence marks the directory as complete.
+            try xml.write(to: cached.appendingPathComponent("AnimData.xml"), options: .atomic)
+            return cached
+        } catch {
+            if Self.isUsable(cached) { return cached }
+            if let bundled, Self.isUsable(bundled) { return bundled }
+            throw error
         }
+    }
 
-        let xml = try await fetch("sprite/\(path)/AnimData.xml")
-        let animData = try AnimData(xml: xml)
-        try FileManager.default.createDirectory(at: cached, withIntermediateDirectories: true)
-        for file in SpriteSet.requiredFiles(for: animData).sorted() {
-            let target = cached.appendingPathComponent(file)
-            if FileManager.default.fileExists(atPath: target.path) { continue }
-            try await fetch("sprite/\(path)/\(file)").write(to: target, options: .atomic)
+    /// Like `spriteDirectory(for:)`, but gives up after `timeout` seconds.
+    public func spriteDirectory(for path: String, timeout: TimeInterval) async throws -> URL {
+        try await withThrowingTaskGroup(of: URL.self) { group in
+            group.addTask { try await self.spriteDirectory(for: path) }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw SpriteStoreError.timedOut
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw SpriteStoreError.timedOut }
+            return first
         }
-        // Written last: its presence marks the directory as complete.
-        try xml.write(to: cached.appendingPathComponent("AnimData.xml"), options: .atomic)
-        return cached
+    }
+
+    /// Paths (e.g. `0025/0000/0001`) of every usable cached or bundled sprite directory.
+    public func cachedSpritePaths() -> [String] {
+        var paths = Set<String>()
+        let roots = [cacheDirectory.appendingPathComponent("sprite"), bundledSprites].compactMap { $0 }
+        for root in roots {
+            let rootPath = root.resolvingSymlinksInPath().path
+            guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
+            for case let url as URL in enumerator where url.lastPathComponent == "AnimData.xml" {
+                let directory = url.deletingLastPathComponent()
+                guard Self.isUsable(directory) else { continue }
+                let path = directory.resolvingSymlinksInPath().path
+                guard path.hasPrefix(rootPath) else { continue }
+                let relative = String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                if !relative.isEmpty { paths.insert(relative) }
+            }
+        }
+        return paths.sorted()
     }
 
     public static func isComplete(_ directory: URL) -> Bool {
@@ -70,6 +117,16 @@ public actor SpriteStore {
               let data = try? AnimData(xml: xml) else { return false }
         return SpriteSet.requiredFiles(for: data).allSatisfy {
             FileManager.default.fileExists(atPath: directory.appendingPathComponent($0).path)
+        }
+    }
+
+    /// Has `AnimData.xml` and an `Idle` or `Walk` sheet, so `SpriteSet` can load it using fallbacks.
+    public static func isUsable(_ directory: URL) -> Bool {
+        guard let xml = try? Data(contentsOf: directory.appendingPathComponent("AnimData.xml")),
+              let data = try? AnimData(xml: xml) else { return false }
+        return ["Idle", "Walk"].contains { name in
+            guard let info = data.anims[name] else { return false }
+            return FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(info.sourceName)-Anim.png").path)
         }
     }
 
