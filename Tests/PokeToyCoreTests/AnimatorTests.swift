@@ -50,4 +50,19 @@ import Testing
         animator.advance(dt: 1, durations: [])
         #expect(animator.frameIndex >= 0)
     }
+
+    @Test func socialOneShotsFinishAndActivitiesLoop() {
+        for kind in [PetAnim.greet, .attack, .sad, .cheer, .wake] {
+            var animator = Animator()
+            animator.play(kind)
+            animator.advance(dt: 1, durations: [2, 4])
+            #expect(animator.finished, "\(kind) should play once")
+        }
+        for kind in [PetAnim.eat, .sit] {
+            var animator = Animator()
+            animator.play(kind)
+            animator.advance(dt: 1, durations: [2, 4])
+            #expect(!animator.finished, "\(kind) should loop")
+        }
+    }
 }

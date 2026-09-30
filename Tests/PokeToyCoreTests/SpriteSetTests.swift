@@ -20,6 +20,23 @@ import Testing
         #expect(set.animation(.walk).frames.count == 8)
     }
 
+    @Test func loadsSocialAnimations() throws {
+        let dir = makeTempDirectory()
+        try writeSpriteDirectory(at: dir, anims: [
+            TestAnim(name: "Walk"), TestAnim(name: "Idle"), TestAnim(name: "Eat"), TestAnim(name: "Nod"),
+            TestAnim(name: "Attack"), TestAnim(name: "Cringe"), TestAnim(name: "Sit"), TestAnim(name: "Wake"),
+            TestAnim(name: "Hop"),
+        ])
+        let set = try SpriteSet(directory: dir)
+        #expect(set.animation(.eat).info.name == "Eat")
+        #expect(set.animation(.greet).info.name == "Nod")
+        #expect(set.animation(.attack).info.name == "Attack")
+        #expect(set.animation(.sad).info.name == "Cringe")
+        #expect(set.animation(.sit).info.name == "Sit")
+        #expect(set.animation(.cheer).info.name == "Hop")
+        #expect(set.animation(.wake).info.name == "Wake")
+    }
+
     @Test func fallsBackWhenAnimationsAreMissing() throws {
         let dir = makeTempDirectory()
         try writeSpriteDirectory(at: dir, anims: [TestAnim(name: "Walk")])
@@ -57,6 +74,6 @@ import Testing
             TestAnim(name: "Attack"),
         ])
         let data = try AnimData(xml: Data(xml.utf8))
-        #expect(SpriteSet.requiredFiles(for: data) == ["Walk-Anim.png", "Idle-Anim.png"])
+        #expect(SpriteSet.requiredFiles(for: data) == ["Walk-Anim.png", "Idle-Anim.png", "Attack-Anim.png"])
     }
 }
