@@ -3,6 +3,7 @@ import PokeToyCore
 
 @MainActor
 protocol PetViewDelegate: AnyObject {
+    func petViewPressed()
     func petViewClicked()
     func petViewDragBegan(at point: CGPoint)
     func petViewDragMoved(to point: CGPoint)
@@ -94,6 +95,7 @@ final class PetView: NSView {
     override func mouseDown(with event: NSEvent) {
         mouseDownPoint = NSEvent.mouseLocation
         dragging = false
+        delegate?.petViewPressed()
     }
 
     override func mouseDragged(with event: NSEvent) {

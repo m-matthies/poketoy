@@ -5,6 +5,10 @@ public enum CursorMode: String, Codable, CaseIterable, Sendable {
 }
 
 public enum PetEvent: Equatable, Sendable {
+    /// Mouse went down on the pet (before it is known to be a click or a drag).
+    case pressed
+    /// The press ended without a click or drag (e.g. the mouse-up was never delivered).
+    case released
     case click
     case dragBegan
     case dragEnded(velocity: CGVector)
@@ -50,6 +54,7 @@ public struct PetBrain: Sendable {
         case dragged
         case react
         case landing
+        case held
     }
 
     public static let walkSpeed: CGFloat = 70
@@ -71,8 +76,19 @@ public struct PetBrain: Sendable {
     public mutating func handle(_ event: PetEvent, body: inout Body) {
         sinceInteraction = 0
         switch event {
+        case .pressed:
+            guard state != .dragged else { return }
+            body.velocity.dx = 0
+            state = .held
+        case .released:
+            guard state == .held else { return }
+            if body.isGrounded { enterIdle(&body) } else { state = .fall(startY: body.position.y, thrown: false) }
         case .click:
-            guard body.isGrounded, state != .dragged else { return }
+            guard state != .dragged else { return }
+            guard body.isGrounded else {
+                if state == .held { state = .fall(startY: body.position.y, thrown: false) }
+                return
+            }
             body.velocity.dx = 0
             state = .react
             setPose(.react, .down, heart: true, restart: true)
@@ -92,6 +108,9 @@ public struct PetBrain: Sendable {
 
         switch state {
         case .dragged:
+            return
+        case .held:
+            body.velocity.dx = 0
             return
         case .fall(let startY, let thrown):
             guard body.isGrounded else { return }

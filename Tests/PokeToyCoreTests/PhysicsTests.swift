@@ -74,4 +74,33 @@ import Testing
         simulate(&body, seconds: 3, world: World(screens: [screen], surfaces: []))
         #expect(body.velocity.dy >= -Physics.terminalVelocity)
     }
+
+    @Test func bouncesOffScreenSideWhileAboveTheScreen() {
+        var body = Body(position: CGPoint(x: 995, y: 900), velocity: CGVector(dx: 900, dy: 0))
+        Physics.step(&body, dt: 1.0 / 60, world: world)
+        #expect(body.position.x <= 1000)
+        #expect(body.velocity.dx < 0)
+    }
+
+    @Test func thrownUpwardComesBackDown() {
+        var body = Body(position: CGPoint(x: 800, y: 700), velocity: CGVector(dx: 0, dy: 1500))
+        for _ in 0..<(3 * 60) {
+            Physics.step(&body, dt: 1.0 / 60, world: world)
+            #expect(world.isRecoverable(body.position, margin: 200))
+        }
+        #expect(body.surfaceID == -1)
+    }
+
+    @Test func ridesWindowMovingSideways() {
+        let before = World(screens: [screen], surfaces: [floor, shelf], windowOrigins: [7: 300])
+        var body = Body(position: CGPoint(x: 450, y: 260))
+        simulate(&body, seconds: 0.5, world: before)
+        #expect(body.surfaceID == 7)
+        let moved = World(screens: [screen],
+                          surfaces: [floor, Surface(id: 7, minX: 350, maxX: 650, y: 250, kind: .window)],
+                          windowOrigins: [7: 350])
+        Physics.step(&body, dt: 1.0 / 60, world: moved)
+        #expect(body.surfaceID == 7)
+        #expect(abs(body.position.x - 500) < 0.001)
+    }
 }

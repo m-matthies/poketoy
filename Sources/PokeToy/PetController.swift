@@ -14,6 +14,7 @@ final class PetController: PetViewDelegate {
     private var animator = Animator()
     private var poseToken = -1
     private let window = PetWindow()
+    private var pressing = false
     private var dragOffset = CGVector.zero
     private var dragSamples: [(time: CFTimeInterval, point: CGPoint)] = []
 
@@ -34,13 +35,18 @@ final class PetController: PetViewDelegate {
     func close() { window.close() }
 
     func tick(dt: Double, world: World, cursor: CGPoint, mode: CursorMode) {
+        if pressing, NSEvent.pressedMouseButtons & 1 == 0 {
+            // The mouse-up never reached us (e.g. a system gesture took over mid-drag).
+            if brain.state == .dragged { petViewDragEnded() } else { brain.handle(.released, body: &body) }
+            pressing = false
+        }
         let finished = animator.finished && animator.kind == brain.pose.anim && poseToken == brain.pose.token
         let halfWidth = CGFloat(sprites.animation(brain.pose.anim).info.frameWidth) * scale * 0.3
         brain.update(BrainContext(dt: dt, world: world, cursor: cursor, cursorMode: mode,
                                   halfWidth: halfWidth, animationFinished: finished), body: &body)
         if brain.state != .dragged {
             Physics.step(&body, dt: CGFloat(dt), world: world)
-            if !world.isOnAnyScreen(body.position, margin: 200) {
+            if !world.isRecoverable(body.position, margin: 200) {
                 body = Body(position: world.spawnPoint(fraction: 0.5))  // lost off-screen: drop back in
                 brain.handle(.dragEnded(velocity: .zero), body: &body)
             }
@@ -59,12 +65,18 @@ final class PetController: PetViewDelegate {
                       footPadding: animation.footPadding(facing: pose.facing),
                       heart: pose.showHeart, feet: body.position, scale: scale)
         // Clicks pass through to other apps except over the sprite's own pixels.
-        window.ignoresMouseEvents = brain.state != .dragged && !window.hitsSprite(at: cursor)
+        window.ignoresMouseEvents = !pressing && !window.hitsSprite(at: cursor)
     }
 
     // MARK: PetViewDelegate
 
+    func petViewPressed() {
+        pressing = true
+        brain.handle(.pressed, body: &body)
+    }
+
     func petViewClicked() {
+        pressing = false
         brain.handle(.click, body: &body)
     }
 
@@ -82,6 +94,7 @@ final class PetController: PetViewDelegate {
     }
 
     func petViewDragEnded() {
+        pressing = false
         let now = CACurrentMediaTime()
         let recent = dragSamples.filter { $0.time >= now - 0.1 }
         var velocity = CGVector.zero

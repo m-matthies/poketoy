@@ -180,4 +180,39 @@ import Testing
         #expect(bodyA.position == bodyB.position)
         #expect(a.state == b.state)
     }
+
+    @Test func pressingStopsAWalkingPet() {
+        var brain = PetBrain(seed: 12)
+        var body = grounded(x: 500, on: floor)
+        let follow = ctx(floorOnly, cursor: CGPoint(x: 900, y: 60), mode: .follow)
+        brain.update(follow, body: &body)
+        #expect(body.velocity.dx > 0)
+        brain.handle(.pressed, body: &body)
+        #expect(brain.state == .held)
+        let heldAt = body.position
+        run(&brain, &body, seconds: 1, follow)
+        #expect(body.velocity.dx == 0)
+        #expect(body.position == heldAt)
+    }
+
+    @Test func clickAfterPressReacts() {
+        var brain = PetBrain(seed: 13)
+        var body = grounded(x: 500, on: floor)
+        brain.handle(.pressed, body: &body)
+        brain.handle(.click, body: &body)
+        #expect(brain.state == .react)
+    }
+
+    @Test func releaseWithoutClickResumes() {
+        var brain = PetBrain(seed: 14)
+        var body = grounded(x: 500, on: floor)
+        brain.handle(.pressed, body: &body)
+        brain.handle(.released, body: &body)
+        if case .idle = brain.state {} else { Issue.record("expected idle, got \(brain.state)") }
+
+        var airborne = Body(position: CGPoint(x: 500, y: 400))
+        brain.handle(.pressed, body: &airborne)
+        brain.handle(.click, body: &airborne)
+        #expect(brain.state == .fall(startY: 400, thrown: false))
+    }
 }

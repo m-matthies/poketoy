@@ -49,10 +49,13 @@ public struct WindowInfo: Sendable {
 public struct World: Sendable {
     public let screens: [ScreenInfo]
     public let surfaces: [Surface]
+    /// Left edge of each window (by window number), so pets can ride windows that move sideways.
+    public let windowOrigins: [Int: CGFloat]
 
-    public init(screens: [ScreenInfo], surfaces: [Surface]) {
+    public init(screens: [ScreenInfo], surfaces: [Surface], windowOrigins: [Int: CGFloat] = [:]) {
         self.screens = screens
         self.surfaces = surfaces
+        self.windowOrigins = windowOrigins
     }
 
     /// Builds surfaces from screens and windows ordered front to back.
@@ -68,7 +71,9 @@ public struct World: Sendable {
         }
 
         var inFront: [CGRect] = []
+        var origins: [Int: CGFloat] = [:]
         for window in windows {
+            origins[window.id] = window.cgBounds.minX
             let rect = CGRect(x: window.cgBounds.minX, y: primaryScreenHeight - window.cgBounds.maxY,
                               width: window.cgBounds.width, height: window.cgBounds.height)
             let top = rect.maxY
@@ -88,7 +93,7 @@ public struct World: Sendable {
                                         y: top, kind: .window))
             }
         }
-        return World(screens: screens, surfaces: surfaces)
+        return World(screens: screens, surfaces: surfaces, windowOrigins: origins)
     }
 
     private static func subtract(_ segments: [(CGFloat, CGFloat)], _ lo: CGFloat, _ hi: CGFloat) -> [(CGFloat, CGFloat)] {
@@ -119,6 +124,19 @@ public struct World: Sendable {
 
     public func isOnAnyScreen(_ point: CGPoint, margin: CGFloat) -> Bool {
         screens.contains { $0.frame.insetBy(dx: -margin, dy: -margin).contains(point) }
+    }
+
+    /// True if a body at `point` can still come back down onto a screen: horizontally within one
+    /// (± margin) and not below it. A pet thrown high above the top is still recoverable.
+    public func isRecoverable(_ point: CGPoint, margin: CGFloat) -> Bool {
+        screens.contains {
+            point.x >= $0.frame.minX - margin && point.x <= $0.frame.maxX + margin && point.y >= $0.frame.minY - margin
+        }
+    }
+
+    /// True if `x` lies within some screen's horizontal span.
+    public func isWithinScreens(x: CGFloat) -> Bool {
+        screens.contains { x >= $0.frame.minX && x <= $0.frame.maxX }
     }
 
     /// A point near the top of the first screen, `fraction` of the way across.

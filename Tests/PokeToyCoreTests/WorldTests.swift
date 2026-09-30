@@ -82,4 +82,18 @@ import Testing
         #expect(world.spawnPoint(fraction: 0.5) == CGPoint(x: 500, y: 765))
         #expect(World(screens: [], surfaces: []).spawnPoint(fraction: 0.5) == .zero)
     }
+
+    @Test func recoverableWhileAboveOrBesideAScreen() {
+        let world = World.build(screens: [screen], windows: [], primaryScreenHeight: 800)
+        #expect(world.isRecoverable(CGPoint(x: 500, y: 1500), margin: 200))   // thrown high above
+        #expect(world.isRecoverable(CGPoint(x: 1150, y: 400), margin: 200))
+        #expect(!world.isRecoverable(CGPoint(x: 1300, y: 400), margin: 200))  // far off the side
+        #expect(!world.isRecoverable(CGPoint(x: 500, y: -500), margin: 200))  // fell below
+    }
+
+    @Test func recordsWindowOrigins() {
+        let window = WindowInfo(id: 42, cgBounds: CGRect(x: 100, y: 200, width: 300, height: 400))
+        let world = World.build(screens: [screen], windows: [window], primaryScreenHeight: 800)
+        #expect(world.windowOrigins[42] == 100)
+    }
 }
