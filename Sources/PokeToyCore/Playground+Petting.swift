@@ -54,7 +54,6 @@ extension Playground {
     /// Records a click on own pet `i`. Returns true if the click is swallowed because the pet is (now) annoyed.
     mutating func noteClick(_ i: Int) -> Bool {
         let id = pets[i].id
-        if let until = annoyedUntil[id], clock < until { return true }
         var times = (clickTimes[id] ?? []).filter { clock - $0 <= Self.annoyingClickWindow }
         times.append(clock)
         guard times.count >= Self.annoyingClicks else {
@@ -70,6 +69,7 @@ extension Playground {
         let x = pets[i].body.position.x
         let away: CGFloat = lastCursor.x > x ? -1 : 1
         let target = clampOnSurface(x + away * 250, pet: i, world: lastWorld)
+        if pets[i].brain.state == .held { pets[i].handle(.released) }  // the mouse went down for this click
         let stormOff = Script(anim: .walk, moveTo: target, speed: PetBrain.walkSpeed * 1.6, end: .arrived, priority: 3)
         let glare = Script(anim: .shoot, facing: away > 0 ? .left : .right, end: .animationFinished, priority: 3,
                            then: .script(stormOff))

@@ -29,7 +29,14 @@ extension Playground {
             bringBack(toy: t, carrier: carrierID, world: world)
             return
         }
-        fetchRacers = fetchRacers.filter { index(of: $0) != nil }
+        // Forget racers that gave up: dragged away, off after a treat, busy with something else.
+        fetchRacers = fetchRacers.filter { id in
+            guard let i = index(of: id), treatTargets[id] == nil else { return false }
+            switch pets[i].brain.state {
+            case .jump, .hop: return true
+            default: return pets[i].brain.script?.priority == 1
+            }
+        }
         guard items[t].state == .free, items[t].body.isGrounded else { return }
         let toy = items[t]
 
@@ -88,7 +95,7 @@ extension Playground {
     }
 
     private mutating func bringBack(toy t: Int, carrier carrierID: UUID, world: World) {
-        guard let c = index(of: carrierID), pets[c].visible, pets[c].body.isGrounded, !interrupted(c) else {
+        guard let c = index(of: carrierID), pets[c].visible, pets[c].body.isGrounded || isHopping(c), !interrupted(c) else {
             dropCarriedToy(t)
             return
         }
@@ -108,6 +115,17 @@ extension Playground {
             pets[c].perform(Script(anim: .walk, moveTo: goal, speed: PetBrain.walkSpeed * 1.2, end: .after(30),
                                    priority: 2))
         }
+    }
+
+    private func isHopping(_ i: Int) -> Bool {
+        if case .hop = pets[i].brain.state { return true }
+        return false
+    }
+
+    /// Lets go of the ball wherever its carrier is (also used when a catch game starts).
+    mutating func dropCarriedToy() {
+        guard let t = items.firstIndex(where: { $0.kind == .toyBall }), case .carried = items[t].state else { return }
+        dropCarriedToy(t)
     }
 
     /// Lets go of the ball wherever the carrier is.

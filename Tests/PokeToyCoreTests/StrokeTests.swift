@@ -75,16 +75,22 @@ import Testing
         #expect(!happy(stroke(&playground, ids[0], rubbing), ids[0]))
     }
 
+    /// A real click: the mouse goes down (`.pressed`), then up without dragging (`.click`).
+    func click(_ playground: inout Playground, _ id: UUID) {
+        playground.handle(.pressed, pet: id)
+        playground.handle(.click, pet: id)
+    }
+
     @Test func fiveQuickClicksAnnoy() {
         var (playground, ids) = makePlayground([510])
         var events: [PlaygroundEvent] = []
         for _ in 0..<5 {
-            playground.handle(.click, pet: ids[0])
+            click(&playground, ids[0])
             events += play(&playground, seconds: 0.2)
         }
         #expect(events.contains(.emotion(petID: ids[0], .angry)))
         #expect(playground.pet(ids[0])?.brain.script?.anim == .shoot || playground.pet(ids[0])?.brain.script?.anim == .walk)
-        // Then it storms off, away from the cursor (which was left of it in these tests: far away at -5000).
+        // Then it storms off, away from the cursor (far away to the left in these tests).
         play(&playground, seconds: 4)
         #expect((playground.pet(ids[0])?.body.position.x ?? 0) > 600)
     }
@@ -92,11 +98,25 @@ import Testing
     @Test func clicksWhileAnnoyedAreIgnored() {
         var (playground, ids) = makePlayground([510])
         for _ in 0..<5 {
-            playground.handle(.click, pet: ids[0])
+            click(&playground, ids[0])
             play(&playground, seconds: 0.1)
         }
-        playground.handle(.click, pet: ids[0])
+        click(&playground, ids[0])
         #expect(playground.pet(ids[0])?.brain.state != .react)
+        #expect(playground.pet(ids[0])?.brain.state != .held)
+        play(&playground, seconds: 1)
+        #expect(playground.pet(ids[0])?.brain.state != .held)
+    }
+
+    @Test func strokedSleepersLoseTheirHeartsAfterAWhile() {
+        var (playground, ids) = makePlayground([510])
+        let asleep = playground.pets[0].fallAsleep()
+        #expect(asleep)
+        _ = stroke(&playground, ids[0], rubbing)
+        #expect(playground.pet(ids[0])?.pose.hearts == 2)
+        play(&playground, seconds: 3)
+        #expect(playground.pet(ids[0])?.pose.hearts == 0)
+        #expect(playground.pet(ids[0])?.brain.isSleeping == true)
     }
 
     @Test func slowClicksDoNotAnnoy() {

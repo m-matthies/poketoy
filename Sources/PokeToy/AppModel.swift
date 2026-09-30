@@ -27,6 +27,11 @@ final class AppModel {
     private let evolutionStore: EvolutionStore
     /// What each pet can evolve into (empty: final form); missing until PokeAPI answered.
     private var evolutionOptions: [UUID: [CatalogEntry]] = [:]
+    /// Pets whose evolution lookup is in flight, and when a lookup last failed (retried after a while).
+    private var evolutionLookups: Set<UUID> = []
+    private var evolutionFailedAt: [UUID: Date] = [:]
+    /// Pets whose new sprites are downloading; they can't evolve again meanwhile.
+    private var evolving: Set<UUID> = []
     private var tickCount = 0
     private let worldMonitor = WorldMonitor()
     private var petViews: [UUID: PetController] = [:]
@@ -117,8 +122,8 @@ final class AppModel {
     }
 
     func evolutionStatus(of id: UUID) -> EvolutionStatus {
-        guard let record = settings.pets.first(where: { $0.id == id }), let options = evolutionOptions[id],
-              !options.isEmpty else { return .none }
+        guard !evolving.contains(id), let record = settings.pets.first(where: { $0.id == id }),
+              let options = evolutionOptions[id], !options.isEmpty else { return .none }
         let hasBestFriend = bestFriendName(of: id) != nil
         if Evolution.isReady(treatsEaten: record.treatsEaten, hasBestFriend: hasBestFriend) { return .ready(options) }
         return .notReady(treatsLeft: max(0, Evolution.treatsNeeded - record.treatsEaten), needsBestFriend: !hasBestFriend)
@@ -126,13 +131,35 @@ final class AppModel {
 
     /// Asks PokeAPI (cached on disk) what each pet can evolve into, for pets not known yet.
     func refreshEvolutionOptions() {
-        for record in settings.pets where evolutionOptions[record.id] == nil {
-            guard let dex = Evolution.dexNumber(of: record.spritePath) else { continue }
+        for record in settings.pets where evolutionOptions[record.id] == nil && !evolutionLookups.contains(record.id) {
             let id = record.id
+            if let failed = evolutionFailedAt[id], Date().timeIntervalSince(failed) < 300 { continue }
+            guard let dex = Evolution.dexNumber(of: record.spritePath), dex > 0 else {
+                evolutionOptions[id] = []  // not a real species (e.g. 0000): nothing to evolve into
+                continue
+            }
+            evolutionLookups.insert(id)
             let store = self.store, evolutions = self.evolutionStore
             Task {
-                guard let next = try? await evolutions.nextForms(of: dex) else { return }  // offline: try again later
-                let catalog = next.isEmpty ? [] : ((try? await store.catalog()) ?? [])
+                defer { self.evolutionLookups.remove(id) }
+                let next: [Int]
+                do {
+                    next = try await evolutions.nextForms(of: dex)
+                } catch SpriteStoreError.http(404, _) {
+                    self.evolutionOptions[id] = []  // PokeAPI doesn't know it: no evolution
+                    return
+                } catch {
+                    self.evolutionFailedAt[id] = Date()  // offline: try again in a while
+                    return
+                }
+                guard !next.isEmpty else {
+                    self.evolutionOptions[id] = []
+                    return
+                }
+                guard let catalog = try? await store.catalog() else {
+                    self.evolutionFailedAt[id] = Date()
+                    return
+                }
                 self.evolutionOptions[id] = next.compactMap { dex in catalog.first { $0.path == Evolution.path(for: dex) } }
             }
         }
@@ -140,7 +167,10 @@ final class AppModel {
 
     /// Evolves a pet: new sprites and name; same pet, friends and place. Plays a white flash.
     func evolve(_ id: UUID, into entry: CatalogEntry) {
+        guard !evolving.contains(id) else { return }
+        evolving.insert(id)
         Task {
+            defer { self.evolving.remove(id) }
             guard let sprites = try? await loadSprites(entry.path),
                   let index = settings.pets.firstIndex(where: { $0.id == id }) else { return }
             settings.pets[index].spritePath = entry.path

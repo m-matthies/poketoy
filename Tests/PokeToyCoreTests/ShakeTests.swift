@@ -61,4 +61,26 @@ import Testing
         #expect(playground.pet(id)?.body.surfaceID == 7)
         #expect(playground.pet(id)?.pose.facing == .right)
     }
+
+    @Test func aNudgeAfterRestingIsNotAShake() {
+        var (playground, id) = petOnWindow()
+        move(&playground, through: [360])
+        move(&playground, through: [360], hold: 5)  // rest
+        let events = move(&playground, through: [325, 360])  // nudge left, then right
+        #expect(playground.pet(id)?.body.surfaceID == 7)
+        #expect(!events.contains(.emotion(petID: id, .surprised)))
+    }
+
+    @Test func petsShakenOffTogetherDoNotKnockEachOtherOver() {
+        for gap in [10, 18, 25] as [CGFloat] {
+            var playground = Playground(seed: 1, scale: 1)
+            let a = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450, y: 251))
+            let b = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450 + gap, y: 251))
+            play(&playground, seconds: 0.1, world: world(windowAt: 300))
+            var events = move(&playground, through: [360, 300, 360, 300])
+            events += play(&playground, seconds: 2, world: world(windowAt: 300))
+            #expect(!events.contains(.emotion(petID: a, .pain)) && !events.contains(.emotion(petID: b, .pain)))
+            #expect(playground.pet(a)?.body.surfaceID != 7 && playground.pet(b)?.body.surfaceID != 7)
+        }
+    }
 }

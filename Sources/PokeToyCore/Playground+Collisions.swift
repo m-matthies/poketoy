@@ -10,7 +10,7 @@ extension Playground {
 
         for x in own {
             for y in own where y != x {
-                guard case .fall(_, true) = pets[x].brain.state,
+                guard thrownByUser.contains(pets[x].id), case .fall(_, true) = pets[x].brain.state,
                       hypot(pets[x].body.velocity.dx, pets[x].body.velocity.dy) > Self.knockSpeed else { continue }
                 let targetState = pets[y].brain.state
                 guard targetState != .dragged, targetState != .held else { continue }

@@ -14,6 +14,8 @@ extension Playground {
     static let shakeWindow = 0.8
     static let shakeMinMove: CGFloat = 30
     static let flingSpeed: CGFloat = 1800
+    /// Longer than two missed 5 Hz samples: the window was resting.
+    static let shakeRest = 0.45
 
     /// Shaking a window (or yanking it very fast) throws the pets standing on it off; slower moves carry them,
     /// and they look the way it's going.
@@ -22,6 +24,11 @@ extension Playground {
             var motion = windowMotion[id] ?? WindowMotion(origin: origin, changedAt: clock)
             let delta = origin - motion.origin
             if abs(delta) >= 1 {
+                if clock - motion.changedAt > Self.shakeRest {
+                    // It was resting: an earlier move doesn't count toward a shake.
+                    motion.direction = 0
+                    motion.turns = []
+                }
                 let speed = abs(delta) / CGFloat(max(clock - motion.changedAt, 1.0 / 60))
                 let direction: CGFloat = delta > 0 ? 1 : -1
                 if motion.direction != 0, direction != motion.direction, abs(delta) >= Self.shakeMinMove {
@@ -48,11 +55,14 @@ extension Playground {
     private mutating func shakeOff(window id: Int, direction: CGFloat, world: World) {
         let lift: CGFloat = 350
         let airtime = 2 * lift / Physics.gravity
-        for i in pets.indices where pets[i].visible && pets[i].body.isGrounded && pets[i].body.surfaceID == id {
-            // Fling it far enough sideways to clear the window's edge in the direction it was moving.
+        let riders = pets.indices.filter { pets[$0].visible && pets[$0].body.isGrounded && pets[$0].body.surfaceID == id }
+        // One speed for everyone (enough for the one furthest from the edge), so they fly together without colliding.
+        let speed = riders.map { i -> CGFloat in
             let x = pets[i].body.position.x
             let toEdge = world.surface(id: id, containingX: x).map { direction > 0 ? $0.maxX - x : x - $0.minX } ?? 0
-            let speed = max(250, (toEdge + pets[i].halfWidth + 20) / airtime)
+            return (toEdge + pets[i].halfWidth + 20) / airtime
+        }.max().map { max(250, $0) } ?? 250
+        for i in riders {
             pets[i].handle(.knocked(velocity: CGVector(dx: speed * direction, dy: lift)))
             if pets[i].role == .own { feel(.surprised, i) }
         }

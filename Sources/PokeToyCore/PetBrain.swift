@@ -149,6 +149,8 @@ public struct PetBrain: Sendable {
     private var sinceInteraction: Double = 0
     private var napRemaining: Double = 0
     private var timeOfDay: TimeOfDay = .day
+    /// Seconds left showing hearts on a stroked sleeping pet.
+    private var sleepHeartsLeft: Double = 0
 
     public init(seed: UInt64, personality: Personality = .pet) {
         rng = SplitMix64(seed: seed)
@@ -244,6 +246,7 @@ public struct PetBrain: Sendable {
         sinceInteraction = 0
         if state == .sleep {
             napRemaining = max(napRemaining, 30)
+            sleepHeartsLeft = 2
             setPose(.sleep, .down, hearts: 2)
             return true
         }
@@ -371,6 +374,10 @@ public struct PetBrain: Sendable {
             if ctx.cursorMode != .off || personality == .wild {
                 enterIdle(&body)
                 return
+            }
+            if sleepHeartsLeft > 0 {
+                sleepHeartsLeft -= ctx.dt
+                if sleepHeartsLeft <= 0 { setPose(.sleep, .down) }
             }
             napRemaining -= ctx.dt
             if napRemaining <= 0 {

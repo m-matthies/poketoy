@@ -10,6 +10,8 @@ extension Playground {
         }
         moments.removeAll()
         treatTargets.removeAll()
+        dropCarriedToy()
+        fetchRacers.removeAll()
         game = CatchGame(roster: roster, seed: seed)
         lastResults = nil
     }

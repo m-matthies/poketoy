@@ -99,4 +99,38 @@ import Testing
         #expect(toy(playground)?.state == .held)
         #expect(playground.pet(ids[0])?.brain.script == nil)
     }
+
+    @Test func carriersKeepTheBallWhileHoppingOverOthers() {
+        var (playground, ids) = makePlayground([200, 380])
+        let asleep = playground.pets[0].fallAsleep()  // a bystander between the carrier and the cursor
+        #expect(asleep)
+        playground.dropToy(at: CGPoint(x: 420, y: 60))
+        let cursorLeft = CGPoint(x: 60, y: 60)
+        playUntil(&playground, seconds: 10, cursor: cursorLeft) { p, _ in carrier(p) == ids[1] }
+        var dropped = false
+        let result = playUntil(&playground, seconds: 15, cursor: cursorLeft) { p, events in
+            if carrier(p) == nil && !events.contains(.fetched(petID: ids[1])) { dropped = true }
+            return events.contains(.fetched(petID: ids[1])) || dropped
+        }
+        #expect(result.met)
+        #expect(!dropped)
+    }
+
+    @Test func startingAGameDropsTheBall() {
+        var (playground, _) = makePlayground([300])
+        playground.dropToy(at: CGPoint(x: 400, y: 60))
+        playUntil(&playground, seconds: 10, cursor: cursor) { p, _ in carrier(p) != nil }
+        playground.startGame(roster: [WildSpec(path: "0025", displayName: "Pikachu", metrics: .uniform())], seed: 1)
+        play(&playground, seconds: 1.0 / 60, cursor: cursor)
+        #expect(carrier(playground) == nil)
+    }
+
+    @Test func racersWhoGiveUpAreForgotten() {
+        var (playground, ids) = makePlayground([300, 900])
+        playground.dropToy(at: CGPoint(x: 600, y: 60))
+        playUntil(&playground, seconds: 3, cursor: cursor) { p, _ in p.fetchRacers.count == 2 }
+        playground.handle(.dragBegan, pet: ids[1])
+        play(&playground, seconds: 1.0 / 60, cursor: cursor)
+        #expect(!playground.fetchRacers.contains(ids[1]))
+    }
 }

@@ -262,7 +262,9 @@ public struct Playground: Sendable {
 
     public mutating func handle(_ event: PetEvent, pet id: UUID) {
         guard let i = index(of: id), pets[i].visible else { return }
-        if event == .click, pets[i].role == .own, noteClick(i) { return }  // annoyed: the click is swallowed
+        if pets[i].role == .own, event == .pressed || event == .click,
+           let until = annoyedUntil[id], clock < until { return }  // storming off: presses and clicks are ignored
+        if event == .click, pets[i].role == .own, noteClick(i) { return }  // this click made it annoyed
         pets[i].handle(event)
         if case .dragEnded(let velocity) = event, pets[i].role == .own, hypot(velocity.dx, velocity.dy) > 400 {
             thrownByUser.insert(id)
