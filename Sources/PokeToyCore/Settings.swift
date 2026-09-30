@@ -74,8 +74,8 @@ public struct Settings: Codable, Equatable, Sendable {
     /// False until the player has picked their first Pokémon (a fresh start or after a reset).
     public var starterChosen: Bool
     public var preferences = Preferences()
-    /// The running (or paused, or waiting) Pomodoro timer, if any.
-    public var pomodoro: Pomodoro?
+    /// Pomodoro timers, at most one per pet (running, paused, or waiting to start).
+    public var timers: [Pomodoro] = []
 
     /// A fresh start: no pets until a starter is chosen.
     public static let `default` = Settings(pets: [], hidden: false, cursorMode: .off, scale: 2, starterChosen: false)
@@ -94,7 +94,29 @@ public struct Settings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences, pomodoro
+        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences, timers, pomodoro
+    }
+
+    /// A timer that may fail to decode (then it's dropped).
+    private struct LossyTimer: Decodable {
+        let timer: Pomodoro?
+        init(from decoder: Decoder) throws {
+            timer = try? Pomodoro(from: decoder)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(pets, forKey: .pets)
+        try c.encode(hidden, forKey: .hidden)
+        try c.encode(cursorMode, forKey: .cursorMode)
+        try c.encode(scale, forKey: .scale)
+        try c.encode(friendships, forKey: .friendships)
+        try c.encode(bestCatchScore, forKey: .bestCatchScore)
+        try c.encode(pokedex, forKey: .pokedex)
+        try c.encode(starterChosen, forKey: .starterChosen)
+        try c.encode(preferences, forKey: .preferences)
+        try c.encode(timers, forKey: .timers)
     }
 
     public init(from decoder: Decoder) throws {
@@ -109,7 +131,12 @@ public struct Settings: Codable, Equatable, Sendable {
         // Settings saved before starters existed belong to players who are already playing.
         starterChosen = (try? container.decodeIfPresent(Bool.self, forKey: .starterChosen)) ?? true
         preferences = (try? container.decodeIfPresent(Preferences.self, forKey: .preferences)) ?? Preferences()
-        pomodoro = try? container.decodeIfPresent(Pomodoro.self, forKey: .pomodoro)
+        var timers = ((try? container.decodeIfPresent([LossyTimer].self, forKey: .timers)) ?? nil)?.compactMap(\.timer) ?? []
+        if let single = try? container.decodeIfPresent(Pomodoro.self, forKey: .pomodoro) {
+            timers.append(single)  // saved when there was only one timer
+        }
+        var seen = Set<UUID>()
+        self.timers = timers.filter { seen.insert($0.petID).inserted }
     }
 
     public static func load(from defaults: UserDefaults, key: String = "settings") -> Settings {

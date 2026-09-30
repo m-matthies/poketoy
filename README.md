@@ -20,13 +20,15 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   come from the catch game (and evolution) — up to 12.
 - **Click** a pet to make it happy; **drag** it to pick it up and let go (or throw it — thrown pets knock others over and
   land dizzy). Click one five times in a row and it gets annoyed, glares at you and storms off.
-- **Right-click** (or ⌃-click) a pet for its menu, with a **Pomodoro timer**: 🍅 Focus (25 min), Short Break (5 min),
-  Long Break (15 min). The pet shows the countdown above its head. When a focus or break ends, the pet cheers, you get a
-  notification with a sound, and your pets come running to the mouse pointer and hop about until you click one (or
-  open a pet's menu, or a minute passes). By default the break starts by itself (a long one after every fourth focus)
-  and the next focus waits for you. Pause, skip, stop or move the timer to another pet from the same menu (or the paw
-  menu). The timer keeps running across restarts. **Preferences → Pomodoro** sets the lengths, the long-break rhythm,
-  what starts automatically, the attention-seeking, notifications and sound.
+- **Right-click** (or ⌃-click) a pet for its menu: **every pet can carry its own Pomodoro timer**. Start 🍅 Focus
+  (25 min), ☕️ Short Break (5 min), Long Break (15 min) or one of your own sessions; **Name a Task…** opens a little field
+  right above the pet ("Write the report") that shows next to its countdown. When a session ends the pet cheers, you get
+  a notification with a sound, and the pet comes running to the mouse pointer and hops about until you click it (or
+  open its menu, or a minute passes). By default breaks start by themselves (a long one after every fourth focus) and
+  the next focus waits for you. Pause, skip, stop or start another session from the same menu, or from the pet's entry
+  in the paw menu (which also shows its countdown). Timers keep running across restarts. **Preferences → Pomodoro**:
+  your sessions (rename the built-ins, add your own **work** and **relax** sessions with their lengths — work counts as
+  focus), the long-break rhythm, what starts automatically, attention-seeking, notifications and sound.
 - **Stroke** a pet by rubbing the cursor back and forth over it: hearts. Sleeping pets sleep on, happily.
 - Pets show how they feel in little **bubbles** with their Pokémon portrait (happy, joyous, sad, angry, surprised, hurt, dizzy).
 - Pets wander along the Dock, the bottom of the screen, the tops of your windows and over to your other monitors — they like

@@ -127,7 +127,7 @@ final class AppModel {
         observeScreenLock()
         onBattery = Self.isOnBattery()
         applyPreferences()
-        if settings.pomodoro != nil { notifier.prepare() }
+        if !settings.timers.isEmpty { notifier.prepare() }
         refreshEvolutionOptions()
         if !settings.starterChosen { showStarterChoice() }
     }
@@ -224,104 +224,140 @@ final class AppModel {
 
     // MARK: - Pomodoro
 
-    var pomodoro: Pomodoro? { settings.pomodoro }
     var pomodoroOptions: PomodoroOptions { settings.preferences.pomodoro }
 
-    /// "🍅 Focus — 12:34 left", for menus.
-    var pomodoroStatus: String? {
-        guard let timer = settings.pomodoro else { return nil }
-        if timer.isWaiting {
-            return timer.phase == .focus ? "🍅 Ready for the next focus?" : "☕️ Time for a \(timer.phase.title.lowercased())"
-        }
+    /// The timer a pet carries, if any.
+    func timer(for id: UUID) -> Pomodoro? {
+        settings.timers.first { $0.petID == id }
+    }
+
+    /// Changes (or creates, or with nil removes) a pet's timer and saves.
+    private func updateTimer(for id: UUID, _ change: (inout Pomodoro?) -> Void) {
+        var timer = timer(for: id)
+        change(&timer)
+        settings.timers.removeAll { $0.petID == id }
+        if let timer { settings.timers.append(timer) }
+        save()
+    }
+
+    /// "🍅 Deep Work — 12:34 left", for menus.
+    func pomodoroStatus(for id: UUID) -> String? {
+        guard let timer = timer(for: id) else { return nil }
         let icon = timer.phase == .focus ? "🍅" : "☕️"
-        return "\(icon) \(timer.phase.title) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
+        if timer.isWaiting { return "\(icon) Up next: \(timer.label)" }
+        return "\(icon) \(timer.label) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
             + (timer.isPaused ? " (paused)" : "")
     }
 
-    /// The countdown shown above the pet carrying the timer.
+    /// The countdown (and task) shown above a pet carrying a timer.
     func pomodoroBadge(for id: UUID) -> String? {
-        guard let timer = settings.pomodoro, timer.petID == id else { return nil }
-        if timer.isWaiting { return timer.phase == .focus ? "🍅 Ready?" : "☕️ Break?" }
-        let icon = timer.isPaused ? "⏸" : timer.phase == .focus ? "🍅" : "☕️"
-        return "\(icon) \(Pomodoro.clock(timer.remaining(at: Date())))"
-    }
-
-    func startPomodoro(_ phase: Pomodoro.Phase, on id: UUID) {
-        if var timer = settings.pomodoro {
-            timer.petID = id
-            timer.start(phase, at: Date(), options: pomodoroOptions)  // keeps the count towards the long break
-            settings.pomodoro = timer
+        guard let timer = timer(for: id) else { return nil }
+        let clock: String
+        if timer.isWaiting {
+            clock = timer.phase == .focus ? "🍅 Ready?" : "☕️ Break?"
         } else {
-            settings.pomodoro = Pomodoro(petID: id, phase: phase, now: Date(), options: pomodoroOptions)
+            let icon = timer.isPaused ? "⏸" : timer.phase == .focus ? "🍅" : "☕️"
+            clock = "\(icon) \(Pomodoro.clock(timer.remaining(at: Date())))"
         }
-        playground.stopSeekingAttention()
+        guard let task = timer.task else { return clock }
+        return "\(clock) · \(task.count > 24 ? task.prefix(23) + "…" : task)"
+    }
+
+    /// Starts a session on a pet (its cycle count and task carry on).
+    func startSession(_ session: SessionPreset, on id: UUID) {
+        updateTimer(for: id) { timer in
+            if timer == nil { timer = Pomodoro.waiting(petID: id, options: pomodoroOptions) }
+            timer?.start(session, at: Date())
+        }
+        playground.stopSeekingAttention(id)
         if pomodoroOptions.notifications { notifier.prepare() }
-        save()
     }
 
-    func pausePomodoro() {
-        settings.pomodoro?.pause(at: Date())
-        playground.stopSeekingAttention()
-        save()
+    /// Starts what the pet's timer has up next (after a phase that didn't start by itself).
+    func startNext(on id: UUID) {
+        guard let timer = timer(for: id), timer.isWaiting else { return }
+        let session = pomodoroOptions.session(timer.phase.rawValue)
+            ?? SessionPreset.builtIn(timer.phase, minutes: pomodoroOptions.minutes(of: timer.phase))
+        startSession(session, on: id)
     }
 
-    func resumePomodoro() {
-        settings.pomodoro?.resume(at: Date())
-        playground.stopSeekingAttention()
-        save()
+    func pausePomodoro(on id: UUID) {
+        updateTimer(for: id) { $0?.pause(at: Date()) }
+        playground.stopSeekingAttention(id)
     }
 
-    /// Ends the current focus or break now (quietly: the player chose it).
-    func skipPomodoro() {
-        _ = settings.pomodoro?.skip(at: Date(), options: pomodoroOptions)
-        playground.stopSeekingAttention()
-        save()
+    func resumePomodoro(on id: UUID) {
+        updateTimer(for: id) { $0?.resume(at: Date()) }
+        playground.stopSeekingAttention(id)
     }
 
-    func stopPomodoro() {
-        settings.pomodoro = nil
-        playground.stopSeekingAttention()
-        save()
+    /// Ends the current session now (quietly: the player chose it; a skipped focus doesn't count).
+    func skipPomodoro(on id: UUID) {
+        let options = pomodoroOptions
+        updateTimer(for: id) { timer in _ = timer?.skip(at: Date(), options: options) }
+        playground.stopSeekingAttention(id)
     }
 
-    func movePomodoro(to id: UUID) {
-        settings.pomodoro?.petID = id
-        save()
+    func stopPomodoro(on id: UUID) {
+        updateTimer(for: id) { $0 = nil }
+        playground.stopSeekingAttention(id)
     }
 
-    /// The user is looking (opened a pet's menu): pets can stop trying to get their attention.
-    func noticedPets() {
-        playground.stopSeekingAttention()
+    /// Names (or with a blank name clears) the task on a pet's timer; a pet without one gets a timer waiting
+    /// for its first focus.
+    func setTask(_ name: String, on id: UUID) {
+        updateTimer(for: id) { timer in
+            if timer == nil { timer = Pomodoro.waiting(petID: id, options: pomodoroOptions) }
+            timer?.setTask(name)
+        }
     }
 
-    /// When a focus or break runs out: the pet reacts and a notification says what's next.
+    /// Asks for the task's name in a small field right above the pet.
+    func editTask(on id: UUID) {
+        petViews[id]?.editTask()
+    }
+
+    /// The user is looking at this pet (opened its menu): it can stop trying to get their attention.
+    func noticed(pet id: UUID) {
+        playground.stopSeekingAttention(id)
+    }
+
+    /// When a pet's session runs out: it reacts, comes to get the user's attention, and a notification says what's next.
     private func checkPomodoro() {
         let options = pomodoroOptions
-        guard var timer = settings.pomodoro, let outcome = timer.advance(at: Date(), options: options) else { return }
-        settings.pomodoro = timer
-        save()
-        let name = settings.pets.first { $0.id == timer.petID }?.name ?? "Your Pokémon"
+        let now = Date()
+        for index in settings.timers.indices {
+            var timer = settings.timers[index]
+            guard let outcome = timer.advance(at: now, options: options) else { continue }
+            let finished = settings.timers[index]  // before advancing: what just ended
+            settings.timers[index] = timer
+            announce(outcome, finished: finished, timer: timer, options: options)
+        }
+    }
+
+    private func announce(_ outcome: Pomodoro.Outcome, finished: Pomodoro, timer: Pomodoro, options: PomodoroOptions) {
+        let id = timer.petID
+        let name = settings.pets.first { $0.id == id }?.name ?? "Your Pokémon"
+        let task = finished.task.map { " on “\($0)”" } ?? ""
         let title: String, body: String
         switch outcome {
-        case .focusDone(let next):
-            playground.celebrate(timer.petID)
+        case .focusDone:
+            playground.celebrate(id)
             // A finished focus counts towards evolving the pet that carried the timer (skipped ones don't).
-            if let index = settings.pets.firstIndex(where: { $0.id == timer.petID }) {
-                settings.pets[index].focusSessions += 1
-                save()
-                petsChanged()
-            }
-            title = "Focus done! 🍅"
-            let rest = "a \(options.minutes(of: next))-minute \(next == .longBreak ? "long " : "")break"
+            if let index = settings.pets.firstIndex(where: { $0.id == id }) { settings.pets[index].focusSessions += 1 }
+            title = "\(finished.label)\(task) done! 🍅"
+            let rest = "\(timer.label) (\(options.minutes(of: timer.phase)) min)"
             body = timer.isWaiting ? "\(name) says: time for \(rest) — right-click it to start."
                 : "\(name) says: time for \(rest)."
         case .breakDone:
-            playground.nudge(timer.petID)
-            title = "Break's over ☕️"
-            body = timer.isWaiting ? "\(name) is ready when you are — right-click it to start the next focus."
-                : "\(name) says: back to focus for \(options.focusMinutes) minutes!"
+            playground.nudge(id)
+            title = "\(finished.label) is over ☕️"
+            body = timer.isWaiting ? "\(name) is ready when you are — right-click it to start \(timer.label)."
+                : "\(name) says: back to \(timer.label) for \(options.minutes(of: timer.phase)) minutes!"
         }
-        if options.seekAttention { playground.seekAttention(timer.petID) }
+        save()
+        petsChanged()
+        if options.seekAttention { playground.seekAttention(id, everyone: false) }
         notifier.post(title: title, body: body, notify: options.notifications, sound: options.sound)
     }
 
@@ -485,10 +521,7 @@ final class AppModel {
         playground.removePet(id)
         petViews.removeValue(forKey: id)?.close()
         settings.pets.removeAll { $0.id == id }
-        if settings.pomodoro?.petID == id {
-            // The timer moves to another pet (or stops when none is left).
-            if let other = settings.pets.first { settings.pomodoro?.petID = other.id } else { settings.pomodoro = nil }
-        }
+        settings.timers.removeAll { $0.petID == id }  // its timer leaves with it
         save()
         petsChanged()
     }

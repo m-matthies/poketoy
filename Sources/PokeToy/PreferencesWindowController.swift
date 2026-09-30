@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 
 /// Pet speed, naps, screens, global shortcuts, auto-hide, launch at login and the battery saver.
 @MainActor
-final class PreferencesWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class PreferencesWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate,
+    NSTextFieldDelegate {
     private unowned let model: AppModel
     private let speed = NSSlider(value: 1, minValue: Preferences.speedRange.lowerBound,
                                  maxValue: Preferences.speedRange.upperBound, target: nil, action: nil)
@@ -22,8 +23,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
                                    target: nil, action: nil)
     // Pomodoro
     private enum PomodoroNumber: Int, CaseIterable {
-        case focus, shortBreak, longBreak, rhythm, evolve
+        case rhythm, evolve
     }
+    private let sessionsTable = ClickToEditTableView()
+    private let removeSessionButton = NSButton(title: "Remove", target: nil, action: nil)
     private var pomodoroSteppers: [PomodoroNumber: NSStepper] = [:]
     private var pomodoroLabels: [PomodoroNumber: NSTextField] = [:]
     private let autoBreaks = NSButton(checkboxWithTitle: "Start breaks automatically", target: nil, action: nil)
@@ -146,7 +149,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
         let general = section([generalGrid, separator(), loginItem, loginNote, battery])
         let hiding = section([grid, separator(), fullScreen, appsLabel, appsScroll, stack([add, remove, restore])])
-        let pomodoro = section([pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound])
+        let pomodoro = section([
+            NSTextField(labelWithString: "Sessions (work sessions count as focus, relax ones as breaks):"),
+            sessionsList(), pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound,
+        ])
         for box in [autoBreaks, autoFocus, attention, notifications, sound] {
             box.target = self
             box.action = #selector(pomodoroChanged)
@@ -187,15 +193,143 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         return column
     }
 
-    /// Focus, break lengths and the long-break rhythm, each with a stepper.
+    /// The sessions: name, length and kind of each, and buttons to add or remove the player's own.
+    private func sessionsList() -> NSView {
+        for (id, title, width) in [("name", "Name", 200.0), ("minutes", "Length", 130.0), ("kind", "Kind", 110.0)] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+            column.title = title
+            column.width = width
+            sessionsTable.addTableColumn(column)
+        }
+        sessionsTable.rowHeight = 26
+        sessionsTable.dataSource = self
+        sessionsTable.delegate = self
+        let scroll = NSScrollView()
+        scroll.documentView = sessionsTable
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
+        scroll.widthAnchor.constraint(equalToConstant: 480).isActive = true
+        let addWork = NSButton(title: "Add Work Session", target: self, action: #selector(addWorkSession))
+        let addRelax = NSButton(title: "Add Relax Session", target: self, action: #selector(addRelaxSession))
+        removeSessionButton.target = self
+        removeSessionButton.action = #selector(removeSession)
+        let list = NSStackView(views: [scroll, stack([addWork, addRelax, removeSessionButton])])
+        list.orientation = .vertical
+        list.alignment = .leading
+        list.spacing = 6
+        return list
+    }
+
+    private var sessions: [SessionPreset] { prefs.pomodoro.sessions }
+
+    private func sessionCell(_ column: String, row: Int) -> NSView? {
+        let session = sessions[row]
+        switch column {
+        case "name":
+            let field = NSTextField(string: session.name)
+            field.isBordered = false
+            field.drawsBackground = false
+            field.tag = row
+            field.delegate = self
+            field.toolTip = session.isBuiltIn ? "Built in: part of the automatic cycle (can be renamed)" : nil
+            return field
+        case "minutes":
+            let range = PomodoroOptions.range(for: session)
+            let stepper = NSStepper()
+            stepper.minValue = Double(range.lowerBound)
+            stepper.maxValue = Double(range.upperBound)
+            stepper.integerValue = session.minutes
+            stepper.autorepeat = true
+            stepper.tag = row
+            stepper.target = self
+            stepper.action = #selector(sessionMinutesChanged(_:))
+            let value = NSTextField(labelWithString: "\(session.minutes) min")
+            value.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+            value.widthAnchor.constraint(equalToConstant: 60).isActive = true
+            return stack([value, stepper])
+        default:
+            if session.isBuiltIn {
+                let text = NSTextField(labelWithString: session.kind == .work ? "Work" : "Relax")
+                text.textColor = .secondaryLabelColor
+                return text
+            }
+            let popup = NSPopUpButton()
+            popup.addItems(withTitles: ["Work", "Relax"])
+            popup.selectItem(at: session.kind == .work ? 0 : 1)
+            popup.controlSize = .small
+            popup.tag = row
+            popup.target = self
+            popup.action = #selector(sessionKindChanged(_:))
+            return popup
+        }
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateRemoveButton()
+    }
+
+    private func updateRemoveButton() {
+        let row = sessionsTable.selectedRow
+        removeSessionButton.isEnabled = sessions.indices.contains(row) && !sessions[row].isBuiltIn
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField, sessions.indices.contains(field.tag) else { return }
+        let id = sessions[field.tag].id
+        let name = field.stringValue
+        model.updatePreferences { $0.pomodoro.rename(session: id, to: name) }
+        sessionsTable.reloadData()
+    }
+
+    @objc private func sessionMinutesChanged(_ sender: NSStepper) {
+        guard sessions.indices.contains(sender.tag) else { return }
+        let id = sessions[sender.tag].id
+        let minutes = sender.integerValue
+        model.updatePreferences { $0.pomodoro.setMinutes(minutes, ofSession: id) }
+        sessionsTable.reloadData(forRowIndexes: [sender.tag], columnIndexes: [1])
+    }
+
+    @objc private func sessionKindChanged(_ sender: NSPopUpButton) {
+        guard sessions.indices.contains(sender.tag) else { return }
+        let id = sessions[sender.tag].id
+        let kind: SessionPreset.Kind = sender.indexOfSelectedItem == 0 ? .work : .relax
+        model.updatePreferences { $0.pomodoro.setKind(kind, ofSession: id) }
+    }
+
+    @objc private func addWorkSession() {
+        addSession(name: "New Work Session", minutes: 50, kind: .work)
+    }
+
+    @objc private func addRelaxSession() {
+        addSession(name: "New Relax Session", minutes: 10, kind: .relax)
+    }
+
+    /// Adds a session and starts editing its name.
+    private func addSession(name: String, minutes: Int, kind: SessionPreset.Kind) {
+        model.updatePreferences { _ = $0.pomodoro.addSession(name: name, minutes: minutes, kind: kind) }
+        sessionsTable.reloadData()
+        let row = sessions.count - 1
+        sessionsTable.selectRowIndexes([row], byExtendingSelection: false)
+        sessionsTable.scrollRowToVisible(row)
+        sessionsTable.editColumn(0, row: row, with: nil, select: true)
+    }
+
+    @objc private func removeSession() {
+        let row = sessionsTable.selectedRow
+        guard sessions.indices.contains(row), !sessions[row].isBuiltIn else { return }
+        let id = sessions[row].id
+        model.updatePreferences { $0.pomodoro.removeSession(id) }
+        sessionsTable.reloadData()
+        updateRemoveButton()
+    }
+
+    /// The long-break rhythm and what evolving takes, each with a stepper.
     private func pomodoroGrid() -> NSGridView {
-        let titles: [PomodoroNumber: String] = [.focus: "Focus:", .shortBreak: "Short break:", .longBreak: "Long break:",
-                                                .rhythm: "Long break after:", .evolve: "Evolving takes:"]
+        let titles: [PomodoroNumber: String] = [.rhythm: "Long break after:", .evolve: "Evolving takes:"]
         var rows: [[NSView]] = []
         for number in PomodoroNumber.allCases {
-            let range = number == .focus ? PomodoroOptions.focusRange
-                : number == .rhythm ? PomodoroOptions.rhythmRange
-                : number == .evolve ? PomodoroOptions.evolveRange : PomodoroOptions.breakRange
+            let range = number == .rhythm ? PomodoroOptions.rhythmRange : PomodoroOptions.evolveRange
             let stepper = NSStepper()
             stepper.minValue = Double(range.lowerBound)
             stepper.maxValue = Double(range.upperBound)
@@ -237,9 +371,6 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     private func pomodoroValue(_ number: PomodoroNumber, _ options: PomodoroOptions) -> Int {
         switch number {
-        case .focus: return options.focusMinutes
-        case .shortBreak: return options.shortBreakMinutes
-        case .longBreak: return options.longBreakMinutes
         case .rhythm: return options.focusesPerLongBreak
         case .evolve: return options.focusSessionsToEvolve
         }
@@ -249,7 +380,6 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         switch number {
         case .rhythm: return value == 1 ? "1 focus" : "\(value) focuses"
         case .evolve: return (value == 1 ? "1 focus session" : "\(value) focus sessions") + " (and \(Evolution.treatsNeeded) treats and a best friend)"
-        default: return "\(value) min"
         }
     }
 
@@ -258,9 +388,6 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         let value = Int(sender.intValue)
         model.updatePreferences { prefs in
             switch number {
-            case .focus: prefs.pomodoro.focusMinutes = value
-            case .shortBreak: prefs.pomodoro.shortBreakMinutes = value
-            case .longBreak: prefs.pomodoro.longBreakMinutes = value
             case .rhythm: prefs.pomodoro.focusesPerLongBreak = value
             case .evolve: prefs.pomodoro.focusSessionsToEvolve = value
             }
@@ -315,6 +442,8 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         }
         fullScreen.state = prefs.hideInFullScreen ? .on : .off
         appsTable.reloadData()
+        if !(window?.firstResponder is NSTextView) { sessionsTable.reloadData() }  // not while a name is typed
+        updateRemoveButton()
         loginItem.state = model.launchesAtLogin || model.launchAtLoginNeedsApproval ? .on : .off
         loginNote.stringValue = model.launchAtLoginNeedsApproval
             ? "Allow PokeToy in System Settings → General → Login Items." : ""
@@ -448,10 +577,11 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     // MARK: - Apps
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        prefs.hiddenWhileFrontmost.count
+        tableView === sessionsTable ? sessions.count : prefs.hiddenWhileFrontmost.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if tableView === sessionsTable { return sessionCell(tableColumn?.identifier.rawValue ?? "name", row: row) }
         let app = prefs.hiddenWhileFrontmost[row]
         let text = NSTextField(labelWithString: app.name)
         text.toolTip = app.bundleID

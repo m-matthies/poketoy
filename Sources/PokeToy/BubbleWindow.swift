@@ -125,3 +125,84 @@ final class BadgeWindow: NSPanel {
         if !isVisible { orderFrontRegardless() }
     }
 }
+
+/// A small text field that pops up right above a pet to name its task. Return saves, Esc cancels, clicking
+/// elsewhere saves. It takes typing without pulling the user's app out of focus.
+@MainActor
+final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
+    private let field = NSTextField()
+    private var onDone: ((String?) -> Void)?
+
+    init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 260, height: 36),
+                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        let background = NSVisualEffectView()
+        background.material = .popover
+        background.state = .active
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 10
+        field.placeholderString = "What are you working on?"
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .none
+        field.delegate = self
+        field.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(field)
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 8),
+            field.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -8),
+            field.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+        ])
+        contentView = background
+    }
+
+    override var canBecomeKey: Bool { true }
+
+    /// Shows the editor centered above `anchor` (the pet's frame) with `text`; `done` gets the new text, or nil
+    /// when cancelled.
+    func edit(text: String, above anchor: CGRect, within bounds: CGRect?, done: @escaping (String?) -> Void) {
+        finish(with: nil)  // a previous edit still open is dropped
+        onDone = done
+        field.stringValue = text
+        var origin = NSPoint(x: anchor.midX - frame.width / 2, y: anchor.maxY + 4)
+        if let bounds {
+            origin.x = min(max(origin.x, bounds.minX), bounds.maxX - frame.width)
+            origin.y = min(origin.y, bounds.maxY - frame.height)
+        }
+        setFrameOrigin(origin)
+        makeKeyAndOrderFront(nil)
+        makeFirstResponder(field)
+        field.currentEditor()?.selectAll(nil)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            finish(with: field.stringValue)
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            finish(with: nil)
+            return true
+        default:
+            return false
+        }
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        if onDone != nil { finish(with: field.stringValue) }  // clicked elsewhere: keep what was typed
+    }
+
+    private func finish(with text: String?) {
+        guard let done = onDone else { return }
+        onDone = nil
+        orderOut(nil)
+        done(text)
+    }
+}

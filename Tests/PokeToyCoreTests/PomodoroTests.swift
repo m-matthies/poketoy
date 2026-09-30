@@ -87,11 +87,11 @@ import Testing
         var settings = Settings.default
         var timer = Pomodoro(petID: pet, phase: .focus, now: start)
         timer.pause(at: at(5))
-        settings.pomodoro = timer
+        settings.timers = [timer]
         let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
-        #expect(again.pomodoro == timer)
-        let broken = #"{"pomodoro": {"phase": "nap"}}"#
-        #expect(try JSONDecoder().decode(Settings.self, from: Data(broken.utf8)).pomodoro == nil)
+        #expect(again.timers == [timer])
+        let broken = #"{"timers": [{"phase": "nap"}]}"#
+        #expect(try JSONDecoder().decode(Settings.self, from: Data(broken.utf8)).timers.isEmpty)
     }
 
     @Test func petsCelebrateAndNudge() {
@@ -195,5 +195,149 @@ import Testing
         record.focusSessions = 7
         let again = try JSONDecoder().decode(PetRecord.self, from: JSONEncoder().encode(record))
         #expect(again.focusSessions == 7)
+    }
+}
+
+@Suite struct SessionPresetTests {
+    let pet = UUID()
+    let start = Date(timeIntervalSince1970: 1_000_000)
+
+    func at(_ minutes: Double) -> Date {
+        start.addingTimeInterval(minutes * 60)
+    }
+
+    @Test func threeBuiltInSessions() {
+        let sessions = PomodoroOptions().sessions
+        #expect(sessions.map(\.id) == ["focus", "shortBreak", "longBreak"])
+        #expect(sessions.map(\.name) == ["Focus", "Short Break", "Long Break"])
+        #expect(sessions.map(\.minutes) == [25, 5, 15])
+        #expect(sessions.map(\.kind) == [.work, .relax, .relax])
+        #expect(sessions.allSatisfy { $0.isBuiltIn })
+    }
+
+    @Test func builtInLengthsAreTheCycleLengths() {
+        var options = PomodoroOptions()
+        options.focusMinutes = 40
+        #expect(options.sessions[0].minutes == 40)
+        options.sessions[1].minutes = 7
+        #expect(options.shortBreakMinutes == 7)
+        #expect(options.duration(of: .shortBreak) == 7 * 60)
+    }
+
+    @Test func addingRenamingAndRemovingSessions() {
+        var options = PomodoroOptions()
+        let deep = options.addSession(name: "Deep Work", minutes: 50, kind: .work)
+        let walk = options.addSession(name: "Walk", minutes: 10, kind: .relax)
+        #expect(options.sessions.map(\.name) == ["Focus", "Short Break", "Long Break", "Deep Work", "Walk"])
+        options.rename(session: "focus", to: "Work")
+        options.rename(session: walk, to: "   ")  // blank: keeps its name
+        #expect(options.sessions.map(\.name) == ["Work", "Short Break", "Long Break", "Deep Work", "Walk"])
+        options.removeSession(deep)
+        options.removeSession("focus")  // built-ins stay
+        #expect(options.sessions.map(\.name) == ["Work", "Short Break", "Long Break", "Walk"])
+    }
+
+    @Test func aCustomWorkSessionCountsAsAFocus() {
+        var options = PomodoroOptions()
+        let deepID = options.addSession(name: "Deep Work", minutes: 50, kind: .work)
+        let deep = options.session(deepID)!
+        var timer = Pomodoro(petID: pet, session: deep, now: start, options: options)
+        #expect(timer.label == "Deep Work")
+        #expect(timer.phase == .focus)
+        #expect(timer.remaining(at: start) == 50 * 60)
+        #expect(timer.advance(at: at(50), options: options) == .focusDone(next: .shortBreak))
+        #expect(timer.focusesDone == 1)
+        #expect(timer.label == "Short Break")
+    }
+
+    @Test func aCustomRelaxSessionIsABreak() {
+        var options = PomodoroOptions()
+        let walkID = options.addSession(name: "Walk", minutes: 10, kind: .relax)
+        let walk = options.session(walkID)!
+        var timer = Pomodoro(petID: pet, session: walk, now: start, options: options)
+        #expect(timer.phase.isBreak)
+        #expect(timer.advance(at: at(10), options: options) == .breakDone)
+        #expect(timer.isWaiting)
+        #expect(timer.label == "Focus")  // what starts next
+    }
+
+    @Test func renamedBuiltInsNameTheCycle() {
+        var options = PomodoroOptions()
+        options.rename(session: "focus", to: "Work")
+        options.rename(session: "shortBreak", to: "Relax")
+        var timer = Pomodoro(petID: pet, phase: .focus, now: start, options: options)
+        #expect(timer.label == "Work")
+        _ = timer.advance(at: at(25), options: options)
+        #expect(timer.label == "Relax")
+    }
+
+    @Test func sessionsDecodeTolerantly() throws {
+        // Older preferences had only the lengths.
+        let old = #"{"preferences": {"pomodoro": {"focusMinutes": 30, "shortBreakMinutes": 6}}}"#
+        let options = try JSONDecoder().decode(Settings.self, from: Data(old.utf8)).preferences.pomodoro
+        #expect(options.sessions.map(\.minutes) == [30, 6, 15])
+        // Built-ins missing from a list come back; bad entries are fixed or dropped.
+        let messy = #"""
+        {"preferences": {"pomodoro": {"sessions": [
+          {"id": "x1", "name": "Read", "minutes": 999, "kind": "work"},
+          {"id": "x1", "name": "Duplicate", "minutes": 5, "kind": "relax"},
+          {"id": "x2", "name": "", "minutes": 10, "kind": "nap"},
+          {"id": "shortBreak", "name": "Relax", "minutes": 8, "kind": "work"}
+        ]}}}
+        """#
+        let fixed = try JSONDecoder().decode(Settings.self, from: Data(messy.utf8)).preferences.pomodoro
+        #expect(fixed.sessions.map(\.id) == ["focus", "shortBreak", "longBreak", "x1"])
+        #expect(fixed.sessions[1].name == "Relax" && fixed.sessions[1].minutes == 8 && fixed.sessions[1].kind == .relax)
+        #expect(fixed.sessions[3].minutes == PomodoroOptions.sessionRange.upperBound)
+    }
+
+    @Test func timersSavedBeforeLabelsStillLoad() throws {
+        let timer = Pomodoro(petID: pet, phase: .longBreak, now: start)
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(timer)) as! [String: Any]
+        json["label"] = nil
+        let again = try JSONDecoder().decode(Pomodoro.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(again.label == "Long Break")
+    }
+}
+
+@Suite struct PetTimerTests {
+    let start = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test func everyPetCanCarryItsOwnTimer() throws {
+        let (a, b) = (UUID(), UUID())
+        var settings = Settings.default
+        settings.timers = [Pomodoro(petID: a, phase: .focus, now: start), Pomodoro(petID: b, phase: .shortBreak, now: start),
+                           Pomodoro(petID: a, phase: .longBreak, now: start)]  // a second one for a: dropped
+        let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
+        #expect(again.timers.map(\.petID) == [a, b])
+        #expect(again.timers.map(\.phase) == [.focus, .shortBreak])
+    }
+
+    @Test func aSavedSingleTimerIsKept() throws {
+        let timer = Pomodoro(petID: UUID(), phase: .focus, now: start)
+        let json = "{\"pomodoro\": \(String(data: try JSONEncoder().encode(timer), encoding: .utf8)!)}"
+        #expect(try JSONDecoder().decode(Settings.self, from: Data(json.utf8)).timers == [timer])
+    }
+
+    @Test func timersCanNameATask() throws {
+        var timer = Pomodoro(petID: UUID(), phase: .focus, now: start)
+        #expect(timer.task == nil)
+        timer.setTask("  Write the report  ")
+        #expect(timer.task == "Write the report")
+        let again = try JSONDecoder().decode(Pomodoro.self, from: JSONEncoder().encode(timer))
+        #expect(again.task == "Write the report")
+        timer.setTask("   ")
+        #expect(timer.task == nil)
+    }
+
+    @Test func aTimerCanWaitToBeStarted() {
+        var options = PomodoroOptions()
+        options.rename(session: "focus", to: "Work")
+        var timer = Pomodoro.waiting(petID: UUID(), options: options)
+        #expect(timer.isWaiting && timer.phase == .focus && timer.label == "Work")
+        timer.setTask("Emails")
+        timer.start(.focus, at: start, options: options)
+        #expect(timer.remaining(at: start) == 25 * 60)
+        #expect(timer.task == "Emails")  // the task stays for the session
     }
 }

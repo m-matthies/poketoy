@@ -9,7 +9,7 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     private var portraits: [String: NSImage] = [:]
     private var requestedPortraits: Set<String> = []
     private let header = NSTextField(labelWithString: "")
-    private let table = PetsTableView()
+    private let table = ClickToEditTableView()
     /// A refresh was skipped while a name was being typed; catch up when typing ends.
     private var needsReload = false
     private let dateFormatter: DateFormatter = {
@@ -173,8 +173,8 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     }
 }
 
-/// Lets a click go straight into a row's name field (a plain table would select the row first).
-private final class PetsTableView: NSTableView {
+/// Lets a click go straight into a row's text field (a plain table would select the row first).
+final class ClickToEditTableView: NSTableView {
     override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool {
         responder is NSTextField || super.validateProposedFirstResponder(responder, for: event)
     }

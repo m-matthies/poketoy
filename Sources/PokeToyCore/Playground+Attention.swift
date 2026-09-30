@@ -29,9 +29,10 @@ extension Playground {
         }
     }
 
-    /// The user noticed (clicked a pet, opened its menu, started the next phase…).
-    public mutating func stopSeekingAttention() {
-        attention = [:]
+    /// The user noticed: `id` stops trying (it was looked at, or its timer was used); with no id, all of them do
+    /// (a seeking pet was clicked).
+    public mutating func stopSeekingAttention(_ id: UUID? = nil) {
+        if let id { attention[id] = nil } else { attention = [:] }
     }
 
     /// Seekers follow the cursor (see `updateBrain`); once there, they hop and call out every so often.

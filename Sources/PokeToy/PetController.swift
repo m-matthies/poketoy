@@ -17,6 +17,7 @@ final class PetController: PetViewDelegate {
     private var bubbleCreated = false
     /// The Pomodoro countdown, made when this pet first carries a timer.
     private var badge: BadgeWindow?
+    private var taskEditor: TaskEditorPanel?
     private var hovering = false
     private var bubbleEmotion: Emotion?
     private var bubbleUntil: CFTimeInterval = 0
@@ -45,6 +46,7 @@ final class PetController: PetViewDelegate {
         window.close()
         if bubbleCreated { bubble.close() }
         badge?.close()
+        taskEditor?.close()
     }
 
     /// Shows `emotion` in a bubble for a couple of seconds: the emoji now, the portrait once it's loaded.
@@ -141,8 +143,20 @@ final class PetController: PetViewDelegate {
 
     func petViewContextMenu(_ event: NSEvent) {
         guard interactive, let menu = MenuBuilder(model: model).makePetMenu(for: id) else { return }
-        model.noticedPets()
+        model.noticed(pet: id)
         NSMenu.popUpContextMenu(menu, with: event, for: window.petView)
+    }
+
+    /// Opens the task editor right above the pet.
+    func editTask() {
+        let editor = taskEditor ?? TaskEditorPanel()
+        taskEditor = editor
+        let anchor = badge?.isVisible == true ? badge!.frame : window.frame
+        editor.edit(text: model.timer(for: id)?.task ?? "", above: anchor, within: window.screen?.visibleFrame) {
+            [weak self] text in
+            guard let self, let text else { return }
+            self.model.setTask(text, on: self.id)
+        }
     }
 
     func petViewDragEnded() {

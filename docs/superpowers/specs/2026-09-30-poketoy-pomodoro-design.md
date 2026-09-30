@@ -36,3 +36,19 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
 - A pet evolves after 15 treats, `PomodoroOptions.focusSessionsToEvolve` finished focus sessions (default 50, 1–1000,
   set in Preferences → Pomodoro) and a best friend. `PetRecord.focusSessions` counts focuses that ran to the end while
   that pet carried the timer (skipped ones don't count); it starts over after evolving, like the treat count.
+
+## Sessions, a timer per pet, tasks (added)
+
+- **Sessions** (`SessionPreset`, `PomodoroOptions.sessions`): the built-ins Focus (work), Short Break and Long Break
+  (relax) drive the automatic cycle — renamable and resizable, not removable, kind fixed; the player adds their own
+  named work or relax sessions (1–180 min). A work session finishing counts as a focus (long-break rhythm, evolution),
+  a relax one as a break. The timer shows the session's name (`Pomodoro.label`). Older preferences (only lengths) load
+  into the built-ins; bad entries are fixed or dropped.
+- **A timer per pet** (`Settings.timers`, one per pet; a saved single timer carries over): each pet's right-click menu
+  and its entry in the paw menu control its own timer; the paw menu's Pets entries show each countdown. A released pet
+  takes its timer with it. When a session ends only that pet comes to get attention; opening its menu or using its
+  timer stops it.
+- **Tasks** (`Pomodoro.task`): "Name a Task…" opens a small field right above the pet (Return saves, Esc cancels,
+  clicking elsewhere saves; it doesn't take focus from the user's app). The task shows beside the countdown and in the
+  notifications, stays for the next sessions until renamed or cleared, and naming one on a pet without a timer gives it
+  a timer waiting for its first focus.
