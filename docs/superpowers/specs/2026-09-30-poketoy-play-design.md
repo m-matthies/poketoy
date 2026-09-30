@@ -319,3 +319,19 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
   only rarely (3%) jumps to another surface; it keeps wandering along it.
 - If the active window moves, pets ride it as before; if another window becomes active,
   pets drift over to it on their next decisions. Wild Pokémon ignore the active window.
+
+### Pets don't walk through each other (replaces the "Bump" rule)
+
+- A pet walking on a surface that is about to touch another pet of the same role (own/own
+  or wild/wild) standing ahead of it on that surface is *blocked*. Own pets and wild
+  Pokémon still pass through each other.
+- Own pets that are both free (not in a game, not scripted, not in a moment) turn the
+  bump into play with probability 0.3: a playful chase (tag) or play-fight, 50/50.
+- Otherwise the walker picks one of two rules at random (50/50):
+  - **hop over:** a small jump landing just past the other pet on the same surface, after
+    which it carries on with its walk or script (only if its goal lies beyond the other
+    pet and the landing spot is on the surface);
+  - **turn back:** it walks 60 pt back the way it came.
+- A pet running a script (treat, friend, tag…) always hops when its goal is beyond the
+  other pet and the landing fits; otherwise it stops right there (its walk "arrives").
+- Tag counts as caught when the chaser is within both half-widths plus 10 pt.
