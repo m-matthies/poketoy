@@ -55,9 +55,10 @@ public enum Pokedex {
     }
 
     /// Records that the Pokémon at `path` became (or is) one of the user's pets.
-    public static func recordPet(path: String, displayName: String, into pokedex: inout [String: PokedexEntry], at date: Date) {
+    public static func recordPet(path: String, displayName: String, isShiny: Bool? = nil,
+                                 into pokedex: inout [String: PokedexEntry], at date: Date) {
         guard let key = key(forPath: path) else { return }
-        let shiny = displayName.contains("(Shiny")
+        let shiny = isShiny ?? displayName.contains("(Shiny")
         if var entry = pokedex[key] {
             entry.everOwned = true
             entry.shinyCaught = entry.shinyCaught || shiny

@@ -182,6 +182,10 @@ public struct Playground: Sendable {
     var calmedUntil: [UUID: Double] = [:]
     /// Wild Pokémon that already broke out of a ball once (no first-throw bonus).
     var brokeFreeOnce: Set<UUID> = []
+    /// Balls that reached the ground this step; they only count as a miss if they didn't land on a wild Pokémon.
+    var landedBalls: Set<UUID> = []
+    /// Combo multiplier at the moment each wild was last hit, paid out if it's caught.
+    var hitMultiplier: [UUID: Double] = [:]
     var paradeTimer = Playground.paradeInterval
     /// After a successful parade roll: seconds left to find a moment when a group is free.
     var paradeWindow: Double = 0
@@ -251,6 +255,7 @@ public struct Playground: Sendable {
         wildShiny.remove(id)
         calmedUntil[id] = nil
         brokeFreeOnce.remove(id)
+        hitMultiplier[id] = nil
         strokes[id] = nil
         clickTimes[id] = nil
         annoyedUntil[id] = nil
@@ -414,8 +419,11 @@ public struct Playground: Sendable {
             if items[i].kind.isHandheld, items[i].state == .free, items[i].body.isGrounded { items[i].age += dt }
             let landed = Physics.step(&items[i].body, dt: CGFloat(dt), world: world)
             if landed && items[i].state == .flying {
-                if items[i].kind.isBall { game?.registerMiss() }  // a ball that hit nothing breaks the combo
-                items[i].state = .fading(remaining: 1.5)  // a ball that hit nothing
+                if items[i].kind.isBall && game?.isPlaying == true {
+                    landedBalls.insert(items[i].id)  // settled after the hit check: it may have landed on a wild
+                } else {
+                    items[i].state = .fading(remaining: 1.5)
+                }
             }
         }
         items.removeAll {

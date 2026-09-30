@@ -104,13 +104,19 @@ public struct CatchGame: Sendable {
     /// Overrides every catch chance (tests).
     var catchChance: Double?
     var shinyOdds = CatchGame.shinyChance
-    private var rng: SplitMix64
+    // Independent random streams, so an optional extra (a shiny sprite, a flying type) never shifts
+    // the spawns or catch rolls of a seeded round such as the daily challenge.
+    private var spawnRNG: SplitMix64
+    private var placeRNG: SplitMix64
+    private var rollRNG: SplitMix64
     private var nextSpawnIn = 0.5
     private var endRequested = false
 
     public init(roster: [WildSpec], seed: UInt64) {
-        self.roster = roster
-        rng = SplitMix64(seed: seed)
+        self.roster = roster.sorted { $0.path < $1.path }  // the same round whatever order the roster loaded in
+        spawnRNG = SplitMix64(seed: seed)
+        placeRNG = SplitMix64(seed: seed ^ 0x5EED_0F0F_1234_5678)
+        rollRNG = SplitMix64(seed: seed &+ 0x0BAD_CAFE)
     }
 
     public var isPlaying: Bool {
@@ -155,12 +161,14 @@ public struct CatchGame: Sendable {
         guard isPlaying, !roster.isEmpty else { return nil }
         nextSpawnIn -= dt
         guard nextSpawnIn <= 0, wildCount < Self.maxWild else { return nil }
-        nextSpawnIn = random(in: Self.spawnInterval)
+        nextSpawnIn = Self.random(in: Self.spawnInterval, &spawnRNG)
+        // Always the same three rolls per spawn, whatever the roster offers.
+        let legendRoll = spawnRNG.unit(), pickRoll = spawnRNG.unit(), shinyRoll = spawnRNG.unit()
         let legendaries = roster.filter(\.isLegendary)
         let regulars = roster.filter { !$0.isLegendary }
-        let pool = !legendaries.isEmpty && (regulars.isEmpty || rng.unit() < Self.legendaryChance) ? legendaries : regulars
-        let spec = pool[min(Int(rng.unit() * Double(pool.count)), pool.count - 1)]
-        let shiny = spec.shinyPath != nil && rng.unit() < shinyOdds
+        let pool = !legendaries.isEmpty && (regulars.isEmpty || legendRoll < Self.legendaryChance) ? legendaries : regulars
+        let spec = pool[min(Int(pickRoll * Double(pool.count)), pool.count - 1)]
+        let shiny = spec.shinyPath != nil && shinyRoll < shinyOdds
         return (spec, shiny)
     }
 
@@ -191,18 +199,19 @@ public struct CatchGame: Sendable {
     }
 
     public mutating func wildLifetime() -> Double {
-        random(in: Self.lifetime)
+        Self.random(in: Self.lifetime, &placeRNG)
     }
 
     /// Decides at the moment of a hit whether the Pokémon will be caught and how often the ball wobbles first.
     public mutating func rollCatch(tier: BallTier = .poke, calmed: Bool = false) -> (caught: Bool, wobbles: Int) {
-        let caught = rng.unit() < catchChance(tier: tier, calmed: calmed)
-        let wobbles = 1 + min(Int(rng.unit() * 3), 2)
+        let caught = rollRNG.unit() < catchChance(tier: tier, calmed: calmed)
+        let wobbles = 1 + min(Int(rollRNG.unit() * 3), 2)
         return (caught, wobbles)
     }
 
+    /// For placing wild Pokémon (screen, side, height).
     public mutating func randomUnit() -> Double {
-        rng.unit()
+        placeRNG.unit()
     }
 
     public mutating func recordHit(isLegendary: Bool = false, isShiny: Bool = false) {
@@ -210,16 +219,18 @@ public struct CatchGame: Sendable {
         score += points(Self.hitPoints, isLegendary: isLegendary, isShiny: isShiny)
     }
 
-    public mutating func recordCatch(_ record: CatchRecord, isLegendary: Bool = false, firstThrow: Bool = false) {
-        score += points(Self.catchPoints, isLegendary: isLegendary, isShiny: record.isShiny)
+    /// `multiplier` is the combo multiplier when the ball hit (the combo may have changed while it wobbled).
+    public mutating func recordCatch(_ record: CatchRecord, isLegendary: Bool = false, firstThrow: Bool = false,
+                                     multiplier: Double? = nil) {
+        score += points(Self.catchPoints, isLegendary: isLegendary, isShiny: record.isShiny, multiplier: multiplier)
         if firstThrow { score += Self.firstThrowBonus }
         catches.append(record)
     }
 
     /// Base points × 3 for legendaries × 2 for shinies × the combo multiplier.
-    private func points(_ base: Int, isLegendary: Bool, isShiny: Bool) -> Int {
+    private func points(_ base: Int, isLegendary: Bool, isShiny: Bool, multiplier: Double? = nil) -> Int {
         let rarity = (isLegendary ? 3.0 : 1.0) * (isShiny ? 2.0 : 1.0)
-        return Int((Double(base) * rarity * comboMultiplier).rounded())
+        return Int((Double(base) * rarity * (multiplier ?? comboMultiplier)).rounded())
     }
 
     /// How many of `catches` can still become pets without exceeding `cap`.
@@ -227,7 +238,7 @@ public struct CatchGame: Sendable {
         max(0, min(catches.count, cap - ownPetCount))
     }
 
-    private mutating func random(in range: ClosedRange<Double>) -> Double {
+    private static func random(in range: ClosedRange<Double>, _ rng: inout SplitMix64) -> Double {
         range.lowerBound + rng.unit() * (range.upperBound - range.lowerBound)
     }
 }

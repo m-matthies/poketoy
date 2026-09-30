@@ -4,14 +4,21 @@ import Foundation
 public enum DailyChallenge {
     public static let regulars = 7
 
+    /// Days are counted on the Gregorian calendar in the local time zone, whatever calendar the user prefers.
+    public static var gregorian: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
     /// yyyymmdd of `date`, used as the game seed.
-    public static func seed(for date: Date, calendar: Calendar = .current) -> UInt64 {
+    public static func seed(for date: Date, calendar: Calendar = DailyChallenge.gregorian) -> UInt64 {
         let day = calendar.dateComponents([.year, .month, .day], from: date)
         return UInt64((day.year ?? 0) * 10_000 + (day.month ?? 0) * 100 + (day.day ?? 0))
     }
 
     /// "yyyy-MM-dd" of `date`, the key for the day's best score.
-    public static func key(for date: Date, calendar: Calendar = .current) -> String {
+    public static func key(for date: Date, calendar: Calendar = DailyChallenge.gregorian) -> String {
         let day = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
     }

@@ -81,7 +81,7 @@ final class GameView: NSView {
         let point = NSEvent.mouseLocation
         let start = CGPoint(x: point.x, y: point.y - ballSize / 2)
         let velocity = drag.releaseVelocity(cap: 2200)
-        if event.modifierFlags.contains(.shift) {
+        if event.modifierFlags.contains(.shift), (model.playground.game?.berriesLeft ?? 0) > 0 {
             model.throwBerry(from: start, velocity: velocity)  // ⇧ throws a Razz Berry
         } else {
             model.throwBall(from: start, velocity: velocity)
