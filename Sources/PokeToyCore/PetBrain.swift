@@ -97,9 +97,14 @@ public struct BrainContext: Sendable {
     public var reduceMotion: Bool
     /// A wild Pokémon calmed by a berry: slow, and not afraid of the cursor.
     public var calm: Bool
+    /// Walking speed, × normal (the player's pet speed preference).
+    public var pace: CGFloat
+    /// Seconds left alone before a nap (a third at night); nil: no naps on their own.
+    public var napAfter: Double?
 
     public init(dt: Double, world: World, cursor: CGPoint, cursorMode: CursorMode, halfWidth: CGFloat,
-                animationFinished: Bool, timeOfDay: TimeOfDay = .day, reduceMotion: Bool = false, calm: Bool = false) {
+                animationFinished: Bool, timeOfDay: TimeOfDay = .day, reduceMotion: Bool = false, calm: Bool = false,
+                pace: CGFloat = 1, napAfter: Double? = PetBrain.sleepAfter) {
         self.dt = dt
         self.world = world
         self.cursor = cursor
@@ -109,6 +114,8 @@ public struct BrainContext: Sendable {
         self.timeOfDay = timeOfDay
         self.reduceMotion = reduceMotion
         self.calm = calm
+        self.pace = pace
+        self.napAfter = napAfter
     }
 }
 
@@ -153,6 +160,7 @@ public struct PetBrain: Sendable {
     private var napRemaining: Double = 0
     private var timeOfDay: TimeOfDay = .day
     private var calm = false
+    private var pace: CGFloat = 1
     /// Seconds left showing hearts on a stroked sleeping pet.
     private var sleepHeartsLeft: Double = 0
 
@@ -344,6 +352,7 @@ public struct PetBrain: Sendable {
         sinceInteraction += ctx.dt
         timeOfDay = ctx.timeOfDay
         calm = ctx.calm
+        pace = ctx.pace
 
         switch state {
         case .dragged:
@@ -422,7 +431,7 @@ public struct PetBrain: Sendable {
 
     private mutating func runScript(_ script: Script, elapsed: Double, _ ctx: BrainContext, _ body: inout Body) {
         var arrived = true
-        let speed = script.speed * (ctx.reduceMotion ? 0.7 : 1)
+        let speed = script.speed * pace * (ctx.reduceMotion ? 0.7 : 1)
         if let target = script.moveTo {
             let dx = target - body.position.x
             if abs(dx) <= max(2, speed * CGFloat(ctx.dt)) {
@@ -504,8 +513,8 @@ public struct PetBrain: Sendable {
     }
 
     private mutating func decideNext(_ ctx: BrainContext, _ body: inout Body) {
-        let sleepAfter = ctx.timeOfDay == .night ? 20 : Self.sleepAfter
-        if personality == .pet && ctx.cursorMode == .off && sinceInteraction > sleepAfter {
+        if personality == .pet && ctx.cursorMode == .off, let napAfter = ctx.napAfter,
+           sinceInteraction > (ctx.timeOfDay == .night ? napAfter / 3 : napAfter) {
             enterSleep(&body)
             return
         }
@@ -616,6 +625,7 @@ public struct PetBrain: Sendable {
     }
 
     private mutating func walk(toward targetX: CGFloat, speed: CGFloat, dt: Double, _ body: inout Body) {
+        let speed = speed * pace
         let dx = targetX - body.position.x
         if abs(dx) <= max(2, speed * CGFloat(dt)) {
             enterIdle(&body)

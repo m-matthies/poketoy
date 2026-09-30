@@ -190,6 +190,10 @@ public struct Playground: Sendable {
     /// After a successful parade roll: seconds left to find a moment when a group is free.
     var paradeWindow: Double = 0
     public var timeOfDay: TimeOfDay = .day
+    /// Walking speed of own pets, × normal (Preferences).
+    public var petSpeed: CGFloat = 1
+    /// Seconds a pet left alone waits before napping; nil: no naps on their own (Preferences).
+    public var napAfter: Double? = PetBrain.sleepAfter
     /// The system "Reduce motion" setting.
     public var reduceMotion = false
     /// The user is holding the mouse button (window drags); only then can a window shake pets off.
@@ -392,7 +396,8 @@ public struct Playground: Sendable {
                                    cursorMode: pet.role == .own ? cursorMode : .off,
                                    halfWidth: pet.halfWidth, animationFinished: finished,
                                    timeOfDay: timeOfDay, reduceMotion: reduceMotion,
-                                   calm: (calmedUntil[pet.id] ?? 0) > clock)
+                                   calm: (calmedUntil[pet.id] ?? 0) > clock,
+                                   pace: pet.role == .own ? petSpeed : 1, napAfter: napAfter)
         pets[i].update(context)
     }
 

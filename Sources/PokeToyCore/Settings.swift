@@ -12,19 +12,33 @@ public struct PetRecord: Codable, Equatable, Identifiable, Sendable {
     public var treatsEaten: Int
     /// A shiny Pokémon (stays shiny when it evolves).
     public var isShiny: Bool
+    /// A name the player gave it (kept when it evolves).
+    public var nickname: String?
+    /// When it became a pet (unknown for pets from before this was recorded).
+    public var joined: Date?
+
+    /// The nickname if there is one, else the species name.
+    public var name: String {
+        guard let nickname = nickname?.trimmingCharacters(in: .whitespacesAndNewlines), !nickname.isEmpty else {
+            return displayName
+        }
+        return nickname
+    }
 
     public init(id: UUID = UUID(), spritePath: String, displayName: String, position: CGPoint? = nil,
-                treatsEaten: Int = 0, isShiny: Bool = false) {
+                treatsEaten: Int = 0, isShiny: Bool = false, nickname: String? = nil, joined: Date? = nil) {
         self.id = id
         self.spritePath = spritePath
         self.displayName = displayName
         self.position = position
         self.treatsEaten = treatsEaten
         self.isShiny = isShiny
+        self.nickname = nickname
+        self.joined = joined
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, spritePath, displayName, position, treatsEaten, isShiny
+        case id, spritePath, displayName, position, treatsEaten, isShiny, nickname, joined
     }
 
     public init(from decoder: Decoder) throws {
@@ -36,6 +50,8 @@ public struct PetRecord: Codable, Equatable, Identifiable, Sendable {
         treatsEaten = (try? container.decodeIfPresent(Int.self, forKey: .treatsEaten)) ?? 0
         // Older records only said so in the name.
         isShiny = (try? container.decodeIfPresent(Bool.self, forKey: .isShiny)) ?? displayName.contains("(Shiny")
+        nickname = try? container.decodeIfPresent(String.self, forKey: .nickname)
+        joined = try? container.decodeIfPresent(Date.self, forKey: .joined)
     }
 }
 
@@ -52,6 +68,7 @@ public struct Settings: Codable, Equatable, Sendable {
     public var pokedex: [String: PokedexEntry]
     /// False until the player has picked their first Pokémon (a fresh start or after a reset).
     public var starterChosen: Bool
+    public var preferences = Preferences()
 
     /// A fresh start: no pets until a starter is chosen.
     public static let `default` = Settings(pets: [], hidden: false, cursorMode: .off, scale: 2, starterChosen: false)
@@ -70,7 +87,7 @@ public struct Settings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen
+        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences
     }
 
     public init(from decoder: Decoder) throws {
@@ -84,6 +101,7 @@ public struct Settings: Codable, Equatable, Sendable {
         pokedex = (try? container.decodeIfPresent([String: PokedexEntry].self, forKey: .pokedex)) ?? [:]
         // Settings saved before starters existed belong to players who are already playing.
         starterChosen = (try? container.decodeIfPresent(Bool.self, forKey: .starterChosen)) ?? true
+        preferences = (try? container.decodeIfPresent(Preferences.self, forKey: .preferences)) ?? Preferences()
     }
 
     public static func load(from defaults: UserDefaults, key: String = "settings") -> Settings {
