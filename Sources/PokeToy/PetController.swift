@@ -152,10 +152,11 @@ final class PetController: PetViewDelegate {
         let editor = taskEditor ?? TaskEditorPanel()
         taskEditor = editor
         let anchor = badge?.isVisible == true ? badge!.frame : window.frame
-        editor.edit(text: model.timer(for: id)?.task ?? "", above: anchor, within: window.screen?.visibleFrame) {
-            [weak self] text in
-            guard let self, let text else { return }
-            self.model.setTask(text, on: self.id)
+        let state = model.taskEditorState(for: id)
+        editor.edit(text: state.task, minutes: state.minutes, unit: state.unit, hint: state.hint, above: anchor,
+                    within: window.screen?.visibleFrame) { [weak self] result in
+            guard let self, let (name, minutes) = result else { return }
+            self.model.saveTask(name, minutes: minutes, on: self.id)
         }
     }
 

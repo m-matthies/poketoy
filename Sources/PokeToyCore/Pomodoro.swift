@@ -6,6 +6,8 @@ import Foundation
 public struct SessionPreset: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case work, relax
+
+        public var icon: String { self == .work ? "💼" : "☕️" }
     }
 
     public static let builtInIDs = ["focus", "shortBreak", "longBreak"]
@@ -245,6 +247,9 @@ public struct Pomodoro: Codable, Equatable, Sendable {
         }
 
         public var isBreak: Bool { self != .focus }
+
+        /// 💼 for work, ☕️ for breaks.
+        public var icon: String { isBreak ? SessionPreset.Kind.relax.icon : SessionPreset.Kind.work.icon }
     }
 
     public enum State: Codable, Equatable, Sendable {
@@ -340,6 +345,34 @@ public struct Pomodoro: Codable, Equatable, Sendable {
         phase = session.phase
         label = session.name
         state = .running(endsAt: now.addingTimeInterval(Double(session.minutes * 60)))
+    }
+
+    /// Starts a work session of the player's chosen length (e.g. for a task), under the focus name.
+    public mutating func startFocus(minutes: Int, at now: Date, options: PomodoroOptions = PomodoroOptions()) {
+        let minutes = min(max(minutes, PomodoroOptions.sessionRange.lowerBound), PomodoroOptions.sessionRange.upperBound)
+        phase = .focus
+        label = options.name(of: .focus)
+        state = .running(endsAt: now.addingTimeInterval(Double(minutes * 60)))
+    }
+
+    /// Adds (or with a negative amount takes off) time from the running or paused session; at least a minute stays.
+    public mutating func adjust(by seconds: Double, at now: Date) {
+        guard !isWaiting else { return }
+        setRemaining(seconds: remaining(at: now) + seconds, at: now)
+    }
+
+    /// Sets how long the running or paused session has left.
+    public mutating func setRemaining(minutes: Int, at now: Date) {
+        setRemaining(seconds: Double(minutes * 60), at: now)
+    }
+
+    private mutating func setRemaining(seconds: Double, at now: Date) {
+        let left = max(60, seconds)
+        switch state {
+        case .running: state = .running(endsAt: now.addingTimeInterval(left))
+        case .paused: state = .paused(remaining: left)
+        case .waiting: break
+        }
     }
 
     public mutating func pause(at now: Date) {

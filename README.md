@@ -20,9 +20,11 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   come from the catch game (and evolution) — up to 12.
 - **Click** a pet to make it happy; **drag** it to pick it up and let go (or throw it — thrown pets knock others over and
   land dizzy). Click one five times in a row and it gets annoyed, glares at you and storms off.
-- **Right-click** (or ⌃-click) a pet for its menu: **every pet can carry its own Pomodoro timer**. Start 🍅 Focus
-  (25 min), ☕️ Short Break (5 min), Long Break (15 min) or one of your own sessions; **Name a Task…** opens a little field
-  right above the pet ("Write the report") that shows next to its countdown. When a session ends the pet cheers, you get
+- **Right-click** (or ⌃-click) a pet for its menu: **every pet can carry its own Pomodoro timer**. Start 💼 Focus
+  (25 min), ☕️ Short Break (5 min), Long Break (15 min) or one of your own sessions — or **Start a Task…**: a little field
+  right above the pet takes the task ("Write the report") and its time in minutes, and Return starts it; the task shows
+  next to the countdown. While a session runs, **Edit Task & Time Left…** changes both, and **Add 5 Minutes** /
+  **Take Off 5 Minutes** adjust the time. When a session ends the pet cheers, you get
   a notification with a sound, and the pet comes running to the mouse pointer and hops about until you click it (or
   open its menu, or a minute passes). By default breaks start by themselves (a long one after every fourth focus) and
   the next focus waits for you. Pause, skip, stop or start another session from the same menu, or from the pet's entry

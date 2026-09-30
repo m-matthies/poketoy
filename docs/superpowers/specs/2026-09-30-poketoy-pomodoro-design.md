@@ -61,3 +61,18 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
   "Return to Poké Ball / Let Out of Poké Ball" in its paw-menu entry (◓ marks pets in their ball; the Pets header says
   how many are out, with Return All / Let All Out), and a button per row in the Pets window. Letting a pet out brings it
   back where it was, with a flash and a happy bubble. Pets in their ball still count towards the 12-pet limit.
+
+## Icons (changed)
+
+- Work is 💼 (was 🍅, which read as an apple), relax ☕️, paused ⏸ — defined once as `SessionPreset.Kind.icon` /
+  `Pomodoro.Phase.icon`.
+
+## Adjustable task time (added)
+
+- The editor above the pet has the task's name and a minutes field with a stepper (1–180). With no timer, or a focus
+  waiting to start, Return starts a work session of that length on the task (`Pomodoro.startFocus(minutes:)`, named
+  like the focus). While a session runs or is paused the field shows the minutes left, and changing it sets the time
+  left (`setRemaining`). With a break up next only the name is shown.
+- Menus: "Add 5 Minutes" and "Take Off 5 Minutes" (when more than 6 minutes are left) for running or paused sessions
+  (`Pomodoro.adjust(by:)`; at least a minute always stays). The editor item reads "Start a Task…", "Edit Task & Time
+  Left…" or "Name a Task…" depending on the timer.

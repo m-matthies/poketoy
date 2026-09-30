@@ -240,10 +240,10 @@ final class AppModel {
         save()
     }
 
-    /// "🍅 Deep Work — 12:34 left", for menus.
+    /// "💼 Deep Work — 12:34 left", for menus.
     func pomodoroStatus(for id: UUID) -> String? {
         guard let timer = timer(for: id) else { return nil }
-        let icon = timer.phase == .focus ? "🍅" : "☕️"
+        let icon = timer.phase.icon
         if timer.isWaiting { return "\(icon) Up next: \(timer.label)" }
         return "\(icon) \(timer.label) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
             + (timer.isPaused ? " (paused)" : "")
@@ -254,9 +254,9 @@ final class AppModel {
         guard let timer = timer(for: id) else { return nil }
         let clock: String
         if timer.isWaiting {
-            clock = timer.phase == .focus ? "🍅 Ready?" : "☕️ Break?"
+            clock = timer.phase == .focus ? "\(timer.phase.icon) Ready?" : "\(timer.phase.icon) Break?"
         } else {
-            let icon = timer.isPaused ? "⏸" : timer.phase == .focus ? "🍅" : "☕️"
+            let icon = timer.isPaused ? "⏸" : timer.phase.icon
             clock = "\(icon) \(Pomodoro.clock(timer.remaining(at: Date())))"
         }
         guard let task = timer.task else { return clock }
@@ -312,6 +312,60 @@ final class AppModel {
         }
     }
 
+    /// What the task editor above a pet shows: the task, and the minutes to work (starting a focus) or left.
+    struct TaskEditorState {
+        let task: String
+        /// nil: no time to set (a break is up next).
+        let minutes: Int?
+        let unit: String
+        let hint: String
+    }
+
+    func taskEditorState(for id: UUID) -> TaskEditorState {
+        let timer = timer(for: id)
+        let task = timer?.task ?? ""
+        guard let timer, !timer.isWaiting else {
+            if let timer, timer.phase.isBreak {
+                return TaskEditorState(task: task, minutes: nil, unit: "", hint: "Return saves · Esc cancels")
+            }
+            return TaskEditorState(task: task, minutes: pomodoroOptions.focusMinutes, unit: "min",
+                                   hint: "Return starts working on it · Esc cancels")
+        }
+        let left = Int((timer.remaining(at: Date()) / 60).rounded(.up))
+        return TaskEditorState(task: task, minutes: max(1, left), unit: "min left", hint: "Return saves · Esc cancels")
+    }
+
+    /// Saves what was typed above a pet: the task, and its time — starting a focus of that length when none is
+    /// running, or setting the time left of the running session when it was changed.
+    func saveTask(_ name: String, minutes: Int?, on id: UUID) {
+        let shown = taskEditorState(for: id).minutes
+        let options = pomodoroOptions
+        var started = false
+        updateTimer(for: id) { timer in
+            if timer == nil { timer = Pomodoro.waiting(petID: id, options: options) }
+            timer?.setTask(name)
+            guard let minutes, var current = timer else { return }
+            if current.isWaiting {
+                if current.phase == .focus {
+                    current.startFocus(minutes: minutes, at: Date(), options: options)
+                    started = true
+                }
+            } else if minutes != shown {
+                current.setRemaining(minutes: minutes, at: Date())
+            }
+            timer = current
+        }
+        if started {
+            playground.stopSeekingAttention(id)
+            if options.notifications { notifier.prepare() }
+        }
+    }
+
+    /// Adds (or with a negative amount takes off) minutes from a pet's running or paused session.
+    func adjustPomodoro(on id: UUID, minutes: Int) {
+        updateTimer(for: id) { $0?.adjust(by: Double(minutes * 60), at: Date()) }
+    }
+
     /// Asks for the task's name in a small field right above the pet.
     func editTask(on id: UUID) {
         petViews[id]?.editTask()
@@ -350,7 +404,7 @@ final class AppModel {
             playground.celebrate(id)
             // A finished focus counts towards evolving the pet that carried the timer (skipped ones don't).
             if let index = settings.pets.firstIndex(where: { $0.id == id }) { settings.pets[index].focusSessions += 1 }
-            title = "\(finished.label)\(task) done! 🍅"
+            title = "\(finished.label)\(task) done! \(finished.phase.icon)"
             let rest = "\(timer.label) (\(options.minutes(of: timer.phase)) min)"
             body = timer.isWaiting ? "\(name) says: time for \(rest) — right-click it to start."
                 : "\(name) says: time for \(rest)."

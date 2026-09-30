@@ -341,3 +341,51 @@ import Testing
         #expect(timer.task == "Emails")  // the task stays for the session
     }
 }
+
+@Suite struct TaskTimeTests {
+    let pet = UUID()
+    let start = Date(timeIntervalSince1970: 1_000_000)
+
+    func at(_ minutes: Double) -> Date {
+        start.addingTimeInterval(minutes * 60)
+    }
+
+    @Test func addingAndTakingOffTime() {
+        var timer = Pomodoro(petID: pet, phase: .focus, now: start)
+        timer.adjust(by: 5 * 60, at: at(10))
+        #expect(timer.remaining(at: at(10)) == 20 * 60)
+        timer.adjust(by: -30 * 60, at: at(10))
+        #expect(timer.remaining(at: at(10)) == 60)  // never below a minute
+        timer.pause(at: at(10))
+        timer.adjust(by: 4 * 60, at: at(20))
+        #expect(timer.remaining(at: at(30)) == 5 * 60)
+    }
+
+    @Test func settingTheTimeLeft() {
+        var timer = Pomodoro(petID: pet, phase: .focus, now: start)
+        timer.setRemaining(minutes: 40, at: at(10))
+        #expect(timer.remaining(at: at(10)) == 40 * 60)
+        #expect(timer.advance(at: at(49)) == nil)
+        #expect(timer.advance(at: at(50)) == .focusDone(next: .shortBreak))
+    }
+
+    @Test func waitingTimersIgnoreAdjustments() {
+        var timer = Pomodoro.waiting(petID: pet)
+        timer.adjust(by: 300, at: start)
+        timer.setRemaining(minutes: 10, at: start)
+        #expect(timer.isWaiting)
+    }
+
+    @Test func aTaskCanStartAFocusOfItsOwnLength() {
+        var options = PomodoroOptions()
+        options.rename(session: "focus", to: "Work")
+        var timer = Pomodoro.waiting(petID: pet, options: options)
+        timer.setTask("Write the report")
+        timer.startFocus(minutes: 45, at: start, options: options)
+        #expect(timer.phase == .focus && timer.label == "Work")
+        #expect(timer.remaining(at: start) == 45 * 60)
+        #expect(timer.task == "Write the report")
+        timer.startFocus(minutes: 999, at: start, options: options)
+        #expect(timer.remaining(at: start) == Double(PomodoroOptions.sessionRange.upperBound * 60))
+    }
+}
