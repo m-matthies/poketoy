@@ -20,7 +20,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   come from the catch game (and evolution) — up to 12.
 - **Click** a pet to make it happy; **drag** it to pick it up and let go (or throw it — thrown pets knock others over and
   land dizzy). Click one five times in a row and it gets annoyed, glares at you and storms off.
-- **Right-click** (or ⌃-click) a pet for its menu: **every pet can carry its own Pomodoro timer**. Start 💼 Focus
+- **Right-click** (or ⌃-click) a pet for its menu (it holds still while the menu or its task field is open): **every pet can carry its own Pomodoro timer**. Start 💼 Focus
   (25 min), ☕️ Short Break (5 min), Long Break (15 min) or one of your own sessions — or **Start a Task…**: a little field
   right above the pet takes the task ("Write the report") and its time in minutes, and Return starts it; the task shows
   next to the countdown. While a session runs, **Edit Task & Time Left…** changes both, and **Add 5 Minutes** /
@@ -28,7 +28,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   a notification with a sound, and the pet comes running to the mouse pointer and hops about until you click it (or
   open its menu, or a minute passes). By default breaks start by themselves (a long one after every fourth focus) and
   the next focus waits for you. Pause, skip, stop or start another session from the same menu, or from the pet's entry
-  in the paw menu (which also shows its countdown). Timers keep running across restarts. **Preferences → Pomodoro**:
+  in the paw menu (which also shows its countdown). Timers keep running across restarts, also while PokeToy is closed (Preferences can make them pause instead). **Preferences → Pomodoro**:
   your sessions (rename the built-ins, add your own **work** and **relax** sessions with their lengths — work counts as
   focus), the long-break rhythm, what starts automatically, attention-seeking, notifications and sound.
 - **Stroke** a pet by rubbing the cursor back and forth over it: hearts. Sleeping pets sleep on, happily.
@@ -75,7 +75,9 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
     treats eaten, best friend, evolution progress; release one from here too.
   - **Preferences…** — *General*, *Shortcuts & Hiding* and *Pomodoro* sections: pet speed; how quickly pets nap (often, normal, rarely, never); all screens or the main screen
     only; the Feed, Catch Game and Show/Hide shortcuts (record your own — they need ⌃ or ⌥ — or clear them); hide pets while an app is full
-    screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); launch at login;
+    screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); hide pets while a
+    listed app such as Zoom shares the screen (on by default); optionally make pets invisible to screen capture
+    altogether (sharing, recordings and your own screenshots — off by default); launch at login;
     battery saver (30 fps on battery, paused while the screen is locked).
   - **Reset Game…** — after asking, releases every pet and erases the Pokédex, scores, friendships, settings and downloaded
     Pokémon; then you choose a new starter.
@@ -91,8 +93,19 @@ swift build         # debug build of the app executable
 `Sources/PokeToyCore` holds all testable logic (sprite parsing, world geometry, physics, behavior,
 settings, downloads). `Sources/PokeToy` is the AppKit layer.
 
-## Credits
+## Credits & licenses
 
-Sprites and portraits: PMDCollab SpriteCollab contributors, licensed
-[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Pokémon is © Nintendo / Creatures Inc. / GAME FREAK inc.
-This is a non-commercial fan project.
+- **Sprites and portraits:** from [PMDCollab SpriteCollab](https://sprites.pmdcollab.org/)
+  ([GitHub](https://github.com/PMDCollab/SpriteCollab)), made by its many artists and licensed under
+  [Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
+  The 200 fully complete species ship with the app in `Resources/Sprites` and `Resources/Portraits` (only the
+  animation sheets and portraits PokeToy uses, unmodified); others are downloaded from SpriteCollab when needed. The
+  artists of every bundled Pokémon are listed in [`Resources/CREDITS.md`](Resources/CREDITS.md) (also inside the app,
+  and summed up in its About window). `scripts/bundle-sprites.py` refreshes the bundle and the credits.
+- **Because of CC BY-NC, the sprites — and so PokeToy with them — may not be used commercially** (no selling it, no
+  paid distribution, no ads).
+- **Pokémon data** (evolutions, types, Pokédex texts): [PokeAPI](https://pokeapi.co/).
+- **Pokémon** and Pokémon character names are trademarks of Nintendo, Creatures Inc. and GAME FREAK inc. PokeToy is
+  an unofficial, non-commercial fan project and is not affiliated with or endorsed by them.
+- **PokeToy's source code** is MIT licensed (see [LICENSE](LICENSE)); that license covers the code only, not the
+  sprites and portraits.

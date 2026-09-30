@@ -17,6 +17,7 @@ final class GameOverlayWindow: NSWindow {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         ignoresMouseEvents = false
         isReleasedWhenClosed = false
+        CapturePolicy.apply(to: self)  // out of screen sharing when the player wants
         contentView = gameView
     }
 

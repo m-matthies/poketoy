@@ -178,6 +178,8 @@ public struct Playground: Sendable {
     var fetchRacers: Set<UUID> = []
     /// Pets trying to get the user's attention.
     var attention: [UUID: AttentionSeeker] = [:]
+    /// Pets held still (their menu or task editor is open).
+    var held: Set<UUID> = []
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
     var wildShiny: Set<UUID> = []
@@ -257,6 +259,7 @@ public struct Playground: Sendable {
         }
         moments.removeAll { $0.a == id || $0.b == id }
         let wasOwn = pet(id)?.role == .own
+        let wasOnScreen = pet(id) != nil
         pets.removeAll { $0.id == id }
         treatTargets[id] = nil
         followTimers[id] = nil
@@ -274,7 +277,9 @@ public struct Playground: Sendable {
         blockTimes[id] = nil
         attention[id] = nil
         fetchRacers.remove(id)
-        if wasOwn && !keepFriendships {
+        held.remove(id)
+        // An own pet — also one released from its Poké Ball, so not on screen — takes its friendships with it.
+        if (wasOwn || !wasOnScreen) && !keepFriendships && friendships.points.keys.contains(where: { $0.contains(id.uuidString) }) {
             friendships.remove(id)
             events.append(.friendshipChanged)
         }
@@ -398,6 +403,7 @@ public struct Playground: Sendable {
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).
     mutating func rulesBeforePhysics(dt: Double, world: World) {
+        holdRules()
         awayRules()
         shakeRules(world: world)
         gameRulesBeforePhysics(dt: dt, world: world)

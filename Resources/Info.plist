@@ -15,6 +15,6 @@
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
-    <key>NSHumanReadableCopyright</key><string>Sprites by PMDCollab SpriteCollab contributors (CC BY-NC 4.0)</string>
+    <key>NSHumanReadableCopyright</key><string>© 2026 Michael Matthies (code, MIT). Sprites and portraits: PMDCollab SpriteCollab artists, CC BY-NC 4.0 — non-commercial.</string>
 </dict>
 </plist>

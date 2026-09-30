@@ -117,7 +117,8 @@ final class ResultsWindowController: NSWindowController {
         updateChoice()
     }
 
-    /// Keeps the boxes within the pet limit, and the buttons in step: Return keeps what's ticked, or releases all.
+    /// Keeps the boxes within the pet limit, and the buttons in step: Return keeps what's ticked (and does nothing
+    /// while nothing is — releasing takes a deliberate click).
     private func updateChoice() {
         let ticked = self.ticked
         for (box, allowed) in zip(checkboxes, CatchGame.tickable(ticked: ticked, count: checkboxes.count, keepable: keepable)) {
@@ -130,7 +131,7 @@ final class ResultsWindowController: NSWindowController {
         keepButton.title = ticked.isEmpty ? "Keep Selected" : ticked.count == 1 ? "Keep 1 Pokémon" : "Keep \(ticked.count) Pokémon"
         keepButton.isEnabled = !ticked.isEmpty
         keepButton.keyEquivalent = ticked.isEmpty ? "" : "\r"
-        releaseButton.keyEquivalent = ticked.isEmpty ? "\r" : ""
+        releaseButton.keyEquivalent = ""
     }
 
     @objc private func keepSelected() {
@@ -140,6 +141,16 @@ final class ResultsWindowController: NSWindowController {
     }
 
     @objc private func releaseAll() {
+        let shinies = results.catches.filter(\.isShiny)
+        if !shinies.isEmpty {
+            let alert = NSAlert()
+            alert.messageText = shinies.count == 1 ? "Release a shiny Pokémon?" : "Release \(shinies.count) shiny Pokémon?"
+            alert.informativeText = "✦ " + shinies.map(\.displayName).joined(separator: ", ")
+                + " — shinies are rare. Tick them to keep them instead."
+            alert.addButton(withTitle: "Release All").hasDestructiveAction = true
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
         close()
     }
 }

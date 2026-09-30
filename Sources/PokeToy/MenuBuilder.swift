@@ -303,7 +303,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             if let task = timer.task { menu.addItem(NSMenuItem(title: "Task: \(task)", action: nil, keyEquivalent: "")) }
             if timer.isWaiting {
                 let icon = timer.phase.icon
-                menu.addItem(ActionItem("\(icon) Start \(timer.label) — \(options.minutes(of: timer.phase)) min") {
+                menu.addItem(ActionItem("\(icon) Start \(options.name(of: timer.phase)) — \(options.minutes(of: timer.phase)) min") {
                     [unowned model] in model.startNext(on: id)
                 })
             } else if timer.isPaused {

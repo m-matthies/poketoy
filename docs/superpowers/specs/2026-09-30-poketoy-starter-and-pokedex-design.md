@@ -31,8 +31,21 @@ Date: 2026-09-30
 ## Later changes
 
 - **Starters bundled:** Pikachu, Charmander, Squirtle and Bulbasaur ship in `Resources/Sprites` (the sheets PokeToy uses)
-  and `Resources/Portraits` (every emotion-bubble portrait); `scripts/bundle-starters.py` refreshes them. `SpriteStore`
+  and `Resources/Portraits` (every emotion-bubble portrait); `scripts/bundle-starters.py` (now `bundle-sprites.py`) refreshes them. `SpriteStore`
   serves bundled portraits and never downloads portraits for a bundled species.
 - **Daily Challenge removed:** with rosters that favour species the player hasn't got yet, a shared fixed roster no
   longer fits. `DailyChallenge`, `Settings.dailyBest` and the menu items are gone (old settings still load); the roster
   size lives in `CatchGame.rosterRegulars` (12).
+
+## The complete collection is bundled (added)
+
+- All 200 species SpriteCollab marks fully complete ship with the app (~26 MB sprites, ~9 MB portraits; only the
+  sheets and emotion portraits PokeToy uses), refreshed by `scripts/bundle-sprites.py`, which also writes
+  `Resources/Sprites/names.json` and `Resources/CREDITS.md` (source, CC BY-NC 4.0, and each Pokémon's artists by name —
+  never their Discord ids).
+- Offline on a first start the bundled Pokémon are the catalog (`SpriteStore.catalog` falls back to `names.json`), so
+  catch rounds work without a connection.
+- The Pokédex's "seen" is now downloads (`SpriteStore.downloadedSpritePaths`, bundled ones excluded) plus wild Pokémon
+  met in catch rounds (`Settings.seen`); bundled species don't all show as seen from the start.
+- Licensing is stated in the README (Credits & licenses), LICENSE (the MIT license covers the code only), the About
+  window (`Credits.html`), `CREDITS.md` in the app, and the app's copyright line.

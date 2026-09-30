@@ -81,6 +81,7 @@ final class AppModel {
     private var sessionInactive = false
     private let notifier = Notifier()
     private var lastPomodoroCheck: CFTimeInterval = 0
+    private var lastAliveSaved: CFTimeInterval = 0
     private var hotKeys: [GlobalHotKey] = []
     /// Shortcuts macOS refused because another app already uses them.
     private(set) var unavailableShortcuts: Set<ShortcutAction> = []
@@ -110,6 +111,11 @@ final class AppModel {
     }
 
     func start() {
+        // Timers keep counting while PokeToy is closed, unless set to pause: then each picks up with the time it had left.
+        if !pomodoroOptions.keepRunningWhileClosed, let closedAt = settings.lastAlive {
+            settings.timers = Pomodoro.resumed(settings.timers, closedAt: closedAt, now: Date())
+        }
+        settings.lastAlive = Date()
         // Current pets belong in the Pokédex too (also covers pets from before it tracked them).
         for record in settings.pets { recordInPokedex(record) }
         settings.save(to: .standard)
@@ -170,6 +176,8 @@ final class AppModel {
     /// Pushes the preferences into the playground, the world, the shortcuts and the tick rate.
     private func applyPreferences() {
         let prefs = settings.preferences
+        CapturePolicy.excluded = prefs.excludeFromCapture
+        worldMonitor.collectsFloatingWindows = prefs.hideFromScreenSharing
         playground.petSpeed = CGFloat(prefs.petSpeed)
         playground.napAfter = prefs.naps.seconds
         if worldMonitor.mainScreenOnly != (prefs.screens == .main) {
@@ -244,7 +252,7 @@ final class AppModel {
     func pomodoroStatus(for id: UUID) -> String? {
         guard let timer = timer(for: id) else { return nil }
         let icon = timer.phase.icon
-        if timer.isWaiting { return "\(icon) Up next: \(timer.label)" }
+        if timer.isWaiting { return "\(icon) Up next: \(pomodoroOptions.name(of: timer.phase))" }
         return "\(icon) \(timer.label) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
             + (timer.isPaused ? " (paused)" : "")
     }
@@ -335,25 +343,16 @@ final class AppModel {
         return TaskEditorState(task: task, minutes: max(1, left), unit: "min left", hint: "Return saves · Esc cancels")
     }
 
-    /// Saves what was typed above a pet: the task, and its time — starting a focus of that length when none is
-    /// running, or setting the time left of the running session when it was changed.
-    func saveTask(_ name: String, minutes: Int?, on id: UUID) {
-        let shown = taskEditorState(for: id).minutes
+    /// Saves what was typed above a pet: the task, and its time (see `TaskEdit.apply`: only Return starts a focus,
+    /// and minutes change a running session only if they were changed and it's still in the same phase).
+    func saveTask(_ name: String, minutes: Int?, snapshot: TaskEditSnapshot, committed: TaskEdit.Commit, on id: UUID) {
         let options = pomodoroOptions
         var started = false
         updateTimer(for: id) { timer in
-            if timer == nil { timer = Pomodoro.waiting(petID: id, options: options) }
-            timer?.setTask(name)
-            guard let minutes, var current = timer else { return }
-            if current.isWaiting {
-                if current.phase == .focus {
-                    current.startFocus(minutes: minutes, at: Date(), options: options)
-                    started = true
-                }
-            } else if minutes != shown {
-                current.setRemaining(minutes: minutes, at: Date())
-            }
-            timer = current
+            let result = TaskEdit.apply(name: name, minutes: minutes, snapshot: snapshot, to: timer, petID: id,
+                                        committed: committed, now: Date(), options: options)
+            timer = result.timer
+            started = result.started
         }
         if started {
             playground.stopSeekingAttention(id)
@@ -364,6 +363,23 @@ final class AppModel {
     /// Adds (or with a negative amount takes off) minutes from a pet's running or paused session.
     func adjustPomodoro(on id: UUID, minutes: Int) {
         updateTimer(for: id) { $0?.adjust(by: Double(minutes * 60), at: Date()) }
+    }
+
+    /// Keeps a pet still (its menu or task editor is open) until `letGoPet`.
+    func holdPet(_ id: UUID) {
+        playground.hold(id)
+    }
+
+    func letGoPet(_ id: UUID) {
+        playground.letGo(id)
+    }
+
+    /// PokeToy is quitting: keeps a task still being typed and notes the time, so timers pause while it's closed.
+    func prepareToQuit() {
+        for view in petViews.values { view.commitTaskEdit() }
+        settings.lastAlive = Date()
+        save()
+        if pomodoroOptions.keepRunningWhileClosed { scheduleAnnouncements() }  // they keep running: macOS tells
     }
 
     /// Asks for the task's name in a small field right above the pet.
@@ -396,28 +412,60 @@ final class AppModel {
 
     private func announce(_ outcome: Pomodoro.Outcome, finished: Pomodoro, timer: Pomodoro, options: PomodoroOptions) {
         let id = timer.petID
-        let name = settings.pets.first { $0.id == id }?.name ?? "Your Pokémon"
-        let task = finished.task.map { " on “\($0)”" } ?? ""
-        let title: String, body: String
         switch outcome {
         case .focusDone:
             playground.celebrate(id)
             // A finished focus counts towards evolving the pet that carried the timer (skipped ones don't).
             if let index = settings.pets.firstIndex(where: { $0.id == id }) { settings.pets[index].focusSessions += 1 }
-            title = "\(finished.label)\(task) done! \(finished.phase.icon)"
-            let rest = "\(timer.label) (\(options.minutes(of: timer.phase)) min)"
-            body = timer.isWaiting ? "\(name) says: time for \(rest) — right-click it to start."
-                : "\(name) says: time for \(rest)."
         case .breakDone:
             playground.nudge(id)
-            title = "\(finished.label) is over ☕️"
-            body = timer.isWaiting ? "\(name) is ready when you are — right-click it to start \(timer.label)."
-                : "\(name) says: back to \(timer.label) for \(options.minutes(of: timer.phase)) minutes!"
         }
         save()
         petsChanged()
-        if options.seekAttention { playground.seekAttention(id, everyone: false) }
-        notifier.post(title: title, body: body, notify: options.notifications, sound: options.sound)
+        // Not in the middle of a catch round: the pet would follow the cursor all over the play area.
+        if options.seekAttention && !isGameRunning { playground.seekAttention(id, everyone: false) }
+        let text = announcement(outcome, finished: finished, timer: timer, options: options)
+        notifier.post(id: announcementID(finished), title: text.title, body: text.body, notify: options.notifications,
+                      sound: options.sound)
+    }
+
+    /// The notification for a session that ended: what it was, and what's next.
+    private func announcement(_ outcome: Pomodoro.Outcome, finished: Pomodoro, timer: Pomodoro,
+                              options: PomodoroOptions) -> (title: String, body: String) {
+        let pet = settings.pets.first { $0.id == timer.petID }
+        let name = pet?.name ?? "Your Pokémon"
+        // A pet in its Poké Ball can't be right-clicked: its timer is in the paw menu.
+        let startHow = pet?.inBall == false ? "right-click it" : "use its entry in the paw menu"
+        let task = finished.task.map { " on “\($0)”" } ?? ""
+        switch outcome {
+        case .focusDone:
+            let rest = "\(options.name(of: timer.phase)) (\(options.minutes(of: timer.phase)) min)"
+            return ("\(finished.label)\(task) done! \(finished.phase.icon)",
+                    timer.isWaiting ? "\(name) says: time for \(rest) — \(startHow) to start." : "\(name) says: time for \(rest).")
+        case .breakDone:
+            return ("\(finished.label) is over ☕️",
+                    timer.isWaiting ? "\(name) is ready when you are — \(startHow) to start \(options.name(of: timer.phase))."
+                        : "\(name) says: back to \(options.name(of: timer.phase)) for \(options.minutes(of: timer.phase)) minutes!")
+        }
+    }
+
+    /// Identifies a session's end, so one macOS already showed (scheduled ahead) isn't posted twice.
+    private func announcementID(_ finished: Pomodoro) -> String {
+        guard case .running(let endsAt) = finished.state else { return finished.petID.uuidString }
+        return "\(finished.petID.uuidString)-\(Int(endsAt.timeIntervalSince1970))"
+    }
+
+    /// While PokeToy can't tick (screen locked, or quit with timers running on), macOS announces the sessions ending.
+    private func scheduleAnnouncements() {
+        let options = pomodoroOptions
+        guard options.notifications || options.sound else { return }
+        for timer in settings.timers {
+            guard case .running(let endsAt) = timer.state else { continue }
+            var next = timer
+            guard let outcome = next.advance(at: endsAt, options: options) else { continue }
+            let text = announcement(outcome, finished: timer, timer: next, options: options)
+            notifier.schedule(id: announcementID(timer), title: text.title, body: text.body, at: endsAt, sound: options.sound)
+        }
     }
 
     // MARK: - Launch at login
@@ -472,11 +520,13 @@ final class AppModel {
     private func updatePacing() {
         let saver = settings.preferences.batterySaver
         if saver && (screenLocked || screensAsleep || sessionInactive) {
+            if timer != nil { scheduleAnnouncements() }  // macOS tells when sessions end meanwhile
             timer?.invalidate()
             timer = nil
             worldMonitor.stop()
             return
         }
+        notifier.cancelScheduled()  // ticking: PokeToy announces sessions itself
         let interval = FramePacing.interval(onBattery: onBattery, batterySaver: saver)
         worldMonitor.resume()
         guard timer == nil || interval != tickInterval else { return }
@@ -506,8 +556,11 @@ final class AppModel {
     }
 
     private func updateAutoHide() {
+        let sharing = AutoHide.isSharingScreen(worldMonitor.floatingWindows, preferences: settings.preferences,
+                                               screens: worldMonitor.screenRectsTopLeft,
+                                               menuBarHeights: worldMonitor.menuBarHeights)
         let hide = autoHideState.update(frontmost: worldMonitor.frontmostBundleID,
-                                        isFullScreen: worldMonitor.frontmostIsFullScreen,
+                                        isFullScreen: worldMonitor.frontmostIsFullScreen, sharing: sharing,
                                         preferences: settings.preferences, gameRunning: isGameRunning)
         guard hide != autoHidden else { return }
         autoHidden = hide
@@ -588,11 +641,30 @@ final class AppModel {
         } else {
             settings.pets[index].inBall = false
             let record = settings.pets[index]
+            let generation = resetGeneration
             Task {
-                guard let sprites = try? await loadSprites(record.spritePath) else { return }
+                guard let sprites = try? await loadSprites(record.spritePath) else {
+                    // Can't be shown (offline and not downloaded): it stays in its ball rather than counting as out.
+                    if let i = settings.pets.firstIndex(where: { $0.id == id }), resetGeneration == generation {
+                        settings.pets[i].inBall = true
+                        save()
+                        petsChanged()
+                    }
+                    return
+                }
                 let start = startPoint(for: record)
                 let comeOut = {
-                    self.attach(record, sprites: sprites, at: start)
+                    // Not after a reset or release meanwhile; and as it is now (it may have evolved meanwhile).
+                    guard self.resetGeneration == generation,
+                          let current = self.settings.pets.first(where: { $0.id == id }), !current.inBall else { return }
+                    guard current.spritePath == record.spritePath else {
+                        Task {
+                            guard let evolved = try? await self.loadSprites(current.spritePath) else { return }
+                            self.attach(current, sprites: evolved, at: start)
+                        }
+                        return
+                    }
+                    self.attach(current, sprites: sprites, at: start)
                     self.showEmotion(.happy, pet: id)
                 }
                 guard !petsHidden else { return comeOut() }
@@ -621,6 +693,8 @@ final class AppModel {
     }
 
     private var ballAnimations: [BallAnimationWindow] = []
+    /// Changes with every reset, so work started before one (loading, animations) knows it's stale.
+    private var resetGeneration = 0
     private var ballSize: CGFloat { CGFloat(ItemArt.size) * playground.scale * 1.4 }
 
     private func playBall(_ kind: BallAnimation.Kind, sprite: CGImage, spriteRect: NSRect, ballCenter: CGPoint,
@@ -951,6 +1025,7 @@ final class AppModel {
 
     private func resetGame() {
         guard canReset else { return }
+        resetGeneration += 1
         gameUI.closeResults()
         for view in petViews.values { view.close() }
         for view in itemViews.values { view.close() }
@@ -979,9 +1054,10 @@ final class AppModel {
         }
     }
 
-    /// Sprite paths downloaded so far (and the bundled ones), for the Pokédex.
+    /// Species the player has seen, for the Pokédex: wild Pokémon met in catch rounds and sprites downloaded (the
+    /// ones bundled with the app don't count until they're met).
     func downloadedSpritePaths() async -> [String] {
-        await store.cachedSpritePaths()
+        await store.downloadedSpritePaths() + settings.seen
     }
 
     /// A species' short description ("Electric · Mouse Pokémon — …"), nil when PokeAPI can't be reached.
@@ -1123,6 +1199,12 @@ final class AppModel {
             playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
             playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         }
+        if now - lastAliveSaved >= 30, !settings.timers.isEmpty, !pomodoroOptions.keepRunningWhileClosed {
+            // Noted regularly (not just on quit), so timers also pause over a crash, force quit or power loss.
+            lastAliveSaved = now
+            settings.lastAlive = Date()
+            save()
+        }
         if now - lastPomodoroCheck >= 0.25 {
             lastPomodoroCheck = now
             checkPomodoro()
@@ -1150,6 +1232,10 @@ final class AppModel {
             switch event {
             case .wildSpawned(let id, let path):
                 wildPaths[id] = path
+                if let species = Pokedex.key(forPath: path), !settings.seen.contains(species) {
+                    settings.seen.append(species)  // met in the wild: seen in the Pokédex
+                    friendshipsChanged = true  // saves at the end of the tick
+                }
                 if let sprites = wildSprites[path] {
                     let view = PetController(id: id, sprites: sprites, model: self, interactive: false)
                     view.show()

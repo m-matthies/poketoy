@@ -114,13 +114,17 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var hiddenWhileFrontmost: [ExcludedApp] = Preferences.defaultHiddenApps
     /// 30 fps on battery; paused while the screen is locked.
     public var batterySaver = true
+    /// Pets hide while a listed app (Zoom, Teams, …) is sharing the screen.
+    public var hideFromScreenSharing = true
+    /// Pets' windows can't be captured at all: invisible in screen sharing, recordings and screenshots (opt-in).
+    public var excludeFromCapture = false
     public var pomodoro = PomodoroOptions()
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case petSpeed, naps, screens, feedShortcut, catchGameShortcut, showHideShortcut, hideInFullScreen,
-             hiddenWhileFrontmost, batterySaver, pomodoro
+             hiddenWhileFrontmost, batterySaver, pomodoro, hideFromScreenSharing, excludeFromCapture
     }
 
     public init(from decoder: Decoder) throws {
@@ -139,6 +143,9 @@ public struct Preferences: Codable, Equatable, Sendable {
             ?? defaults.hiddenWhileFrontmost
         batterySaver = (try? c.decodeIfPresent(Bool.self, forKey: .batterySaver)) ?? defaults.batterySaver
         pomodoro = (try? c.decodeIfPresent(PomodoroOptions.self, forKey: .pomodoro)) ?? defaults.pomodoro
+        hideFromScreenSharing = (try? c.decodeIfPresent(Bool.self, forKey: .hideFromScreenSharing))
+            ?? defaults.hideFromScreenSharing
+        excludeFromCapture = (try? c.decodeIfPresent(Bool.self, forKey: .excludeFromCapture)) ?? defaults.excludeFromCapture
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -153,6 +160,8 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(hiddenWhileFrontmost, forKey: .hiddenWhileFrontmost)
         try c.encode(batterySaver, forKey: .batterySaver)
         try c.encode(pomodoro, forKey: .pomodoro)
+        try c.encode(hideFromScreenSharing, forKey: .hideFromScreenSharing)
+        try c.encode(excludeFromCapture, forKey: .excludeFromCapture)
     }
 
     private static func shortcut(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys,
@@ -164,14 +173,57 @@ public struct Preferences: Codable, Equatable, Sendable {
     }
 }
 
+/// An on-screen window, as far as screen-sharing detection needs it (window-list coordinates, origin top left).
+public struct SharingWindow: Equatable, Sendable {
+    public var bundleID: String?
+    public var layer: Int
+    public var bounds: CGRect
+    public var alpha: Double
+
+    public init(bundleID: String?, layer: Int, bounds: CGRect, alpha: Double = 1) {
+        self.bundleID = bundleID
+        self.layer = layer
+        self.bounds = bounds
+        self.alpha = alpha
+    }
+}
+
 /// When pets get out of the way on their own.
 public enum AutoHide {
     public static let ownBundleID = "local.poketoy.PokeToy"
 
-    public static func shouldHide(frontmost: String?, isFullScreen: Bool, preferences: Preferences) -> Bool {
+    public static func shouldHide(frontmost: String?, isFullScreen: Bool, sharing: Bool = false,
+                                  preferences: Preferences) -> Bool {
+        if sharing && preferences.hideFromScreenSharing { return true }
         guard let frontmost, frontmost != ownBundleID else { return false }
         if preferences.hiddenWhileFrontmost.contains(where: { $0.bundleID == frontmost }) { return true }
         return isFullScreen && preferences.hideInFullScreen
+    }
+
+    /// Meeting apps whose screen sharing is recognised.
+    public static let sharingApps: Set<String> = ["us.zoom.xos", "com.microsoft.teams2", "com.microsoft.teams",
+                                                   "Cisco-Systems.Spark"]
+    /// Window levels that are never a sharing toolbar: modal panels, pop-up menus, help tags.
+    static let ignoredLevels: Set<Int> = [8, 101, 200]
+
+    /// Whether a meeting app (Zoom, Teams, Webex) seems to be sharing the screen: it then shows a see-through border
+    /// window over the shared screen, or a floating toolbar — a short, wide window above the normal layer that isn't
+    /// a menu bar icon, dialog or menu. `menuBarHeights` are per screen (taller on displays with a camera notch).
+    public static func isSharingScreen(_ windows: [SharingWindow], preferences: Preferences, screens: [CGRect],
+                                       menuBarHeights: [CGFloat] = []) -> Bool {
+        guard preferences.hideFromScreenSharing else { return false }
+        return windows.contains { window in
+            guard let app = window.bundleID, sharingApps.contains(app), window.layer > 0, window.layer < 1000,
+                  !ignoredLevels.contains(window.layer), window.alpha > 0 else { return false }
+            if coversAScreen(window.bounds, screens: screens) { return true }  // the border around a shared screen
+            let inMenuBar = screens.enumerated().contains { index, screen in
+                let height = index < menuBarHeights.count ? menuBarHeights[index] : 30
+                return window.bounds.minY < screen.minY + height && window.bounds.height <= height + 2
+            }
+            let size = window.bounds.size
+            let toolbarShaped = size.height >= 20 && size.height <= 120 && size.width >= 60 && size.width >= size.height * 1.5
+            return window.alpha > 0.1 && !inMenuBar && toolbarShaped
+        }
     }
 
     /// A window exactly covering one of the screens (CG window bounds and screen frames in the same coordinates,
@@ -202,10 +254,12 @@ public struct AutoHideState: Sendable {
     public init() {}
 
     /// Whether pets should be auto-hidden now.
-    public mutating func update(frontmost: String?, isFullScreen: Bool, preferences: Preferences, gameRunning: Bool) -> Bool {
+    public mutating func update(frontmost: String?, isFullScreen: Bool, sharing: Bool = false, preferences: Preferences,
+                                gameRunning: Bool) -> Bool {
         if let shown = shownAnywayFor, shown != frontmost { shownAnywayFor = nil }  // a new app in front: rules again
         guard !gameRunning, shownAnywayFor == nil else { return false }
-        return AutoHide.shouldHide(frontmost: frontmost, isFullScreen: isFullScreen, preferences: preferences)
+        return AutoHide.shouldHide(frontmost: frontmost, isFullScreen: isFullScreen, sharing: sharing,
+                                   preferences: preferences)
     }
 
     /// The player showed the pets while `frontmost` was hiding them: leave them visible until another app is in front.

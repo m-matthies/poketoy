@@ -85,6 +85,7 @@ import Testing
 
     @Test func survivesARelaunch() throws {
         var settings = Settings.default
+        settings.pets = [PetRecord(id: pet, spritePath: "0025", displayName: "Pikachu")]
         var timer = Pomodoro(petID: pet, phase: .focus, now: start)
         timer.pause(at: at(5))
         settings.timers = [timer]
@@ -306,6 +307,8 @@ import Testing
     @Test func everyPetCanCarryItsOwnTimer() throws {
         let (a, b) = (UUID(), UUID())
         var settings = Settings.default
+        settings.pets = [PetRecord(id: a, spritePath: "0025", displayName: "Pikachu"),
+                         PetRecord(id: b, spritePath: "0004", displayName: "Charmander")]
         settings.timers = [Pomodoro(petID: a, phase: .focus, now: start), Pomodoro(petID: b, phase: .shortBreak, now: start),
                            Pomodoro(petID: a, phase: .longBreak, now: start)]  // a second one for a: dropped
         let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
@@ -314,8 +317,10 @@ import Testing
     }
 
     @Test func aSavedSingleTimerIsKept() throws {
-        let timer = Pomodoro(petID: UUID(), phase: .focus, now: start)
-        let json = "{\"pomodoro\": \(String(data: try JSONEncoder().encode(timer), encoding: .utf8)!)}"
+        let pet = PetRecord(spritePath: "0025", displayName: "Pikachu")
+        let timer = Pomodoro(petID: pet.id, phase: .focus, now: start)
+        let pets = String(data: try JSONEncoder().encode([pet]), encoding: .utf8)!
+        let json = "{\"pets\": \(pets), \"pomodoro\": \(String(data: try JSONEncoder().encode(timer), encoding: .utf8)!)}"
         #expect(try JSONDecoder().decode(Settings.self, from: Data(json.utf8)).timers == [timer])
     }
 
@@ -387,5 +392,49 @@ import Testing
         #expect(timer.task == "Write the report")
         timer.startFocus(minutes: 999, at: start, options: options)
         #expect(timer.remaining(at: start) == Double(PomodoroOptions.sessionRange.upperBound * 60))
+    }
+}
+
+@Suite struct ClosedAppTests {
+    let pet = UUID()
+    let start = Date(timeIntervalSince1970: 1_000_000)
+
+    func at(_ minutes: Double) -> Date {
+        start.addingTimeInterval(minutes * 60)
+    }
+
+    @Test func timersPauseWhileTheAppIsClosed() {
+        let running = Pomodoro(petID: pet, phase: .focus, now: start)  // 25 min
+        let resumed = Pomodoro.resumed([running], closedAt: at(12), now: at(600))
+        #expect(resumed[0].remaining(at: at(600)) == 13 * 60)
+        #expect(resumed[0].phase == .focus && !resumed[0].isPaused)
+    }
+
+    @Test func pausedAndWaitingTimersAreLeftAlone() {
+        var paused = Pomodoro(petID: pet, phase: .focus, now: start)
+        paused.pause(at: at(5))
+        let waiting = Pomodoro.waiting(petID: UUID())
+        let resumed = Pomodoro.resumed([paused, waiting], closedAt: at(6), now: at(100))
+        #expect(resumed == [paused, waiting])
+    }
+
+    @Test func aTimerThatRanOutJustBeforeClosingFinishesRightAway() {
+        let running = Pomodoro(petID: pet, phase: .shortBreak, now: start)  // 5 min
+        var resumed = Pomodoro.resumed([running], closedAt: at(5.5), now: at(60))
+        #expect(resumed[0].remaining(at: at(60)) == 0)
+        #expect(resumed[0].advance(at: at(60)) == .breakDone)
+    }
+
+    @Test func clocksGoingBackwardsChangeNothing() {
+        let running = Pomodoro(petID: pet, phase: .focus, now: start)
+        #expect(Pomodoro.resumed([running], closedAt: at(10), now: at(9)) == [running])
+    }
+
+    @Test func timersKeepRunningWhileClosedByDefault() throws {
+        #expect(PomodoroOptions().keepRunningWhileClosed)
+        var settings = Settings.default
+        settings.lastAlive = at(3)
+        let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
+        #expect(again.lastAlive == at(3))
     }
 }

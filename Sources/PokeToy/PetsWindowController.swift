@@ -173,9 +173,9 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     }
 
     @objc private func toggleBall(_ sender: NSButton) {
-        guard pets.indices.contains(sender.tag) else { return }
-        let pet = pets[sender.tag]
-        model.setInBall(pet.id, !pet.inBall)
+        guard pets.indices.contains(sender.tag),
+              let current = model.settings.pets.first(where: { $0.id == pets[sender.tag].id }) else { return }
+        model.setInBall(current.id, !current.inBall)  // the current state: a menu may have changed it meanwhile
         reload()
     }
 

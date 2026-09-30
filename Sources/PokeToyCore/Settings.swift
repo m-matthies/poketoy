@@ -78,6 +78,10 @@ public struct Settings: Codable, Equatable, Sendable {
     /// False until the player has picked their first Pokémon (a fresh start or after a reset).
     public var starterChosen: Bool
     public var preferences = Preferences()
+    /// When PokeToy was last known to be running (saved regularly and on quit), to pause timers while it's closed.
+    public var lastAlive: Date?
+    /// Species keys (`0016`) of wild Pokémon met in catch rounds, for the Pokédex's "seen".
+    public var seen: [String] = []
     /// Pomodoro timers, at most one per pet (running, paused, or waiting to start).
     public var timers: [Pomodoro] = []
 
@@ -98,7 +102,7 @@ public struct Settings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences, timers, pomodoro
+        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, starterChosen, preferences, timers, pomodoro, seen, lastAlive
     }
 
     /// A timer that may fail to decode (then it's dropped).
@@ -121,6 +125,8 @@ public struct Settings: Codable, Equatable, Sendable {
         try c.encode(starterChosen, forKey: .starterChosen)
         try c.encode(preferences, forKey: .preferences)
         try c.encode(timers, forKey: .timers)
+        try c.encode(seen, forKey: .seen)
+        try c.encodeIfPresent(lastAlive, forKey: .lastAlive)
     }
 
     public init(from decoder: Decoder) throws {
@@ -139,8 +145,11 @@ public struct Settings: Codable, Equatable, Sendable {
         if let single = try? container.decodeIfPresent(Pomodoro.self, forKey: .pomodoro) {
             timers.append(single)  // saved when there was only one timer
         }
-        var seen = Set<UUID>()
-        self.timers = timers.filter { seen.insert($0.petID).inserted }
+        var petsWithTimers = Set<UUID>()
+        let petIDs = Set(pets.map(\.id))
+        self.timers = timers.filter { petIDs.contains($0.petID) && petsWithTimers.insert($0.petID).inserted }
+        seen = (try? container.decodeIfPresent([String].self, forKey: .seen)) ?? []
+        lastAlive = try? container.decodeIfPresent(Date.self, forKey: .lastAlive)
     }
 
     public static func load(from defaults: UserDefaults, key: String = "settings") -> Settings {

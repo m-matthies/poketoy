@@ -16,6 +16,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     private var shortcutButtons: [ShortcutAction: NSButton] = [:]
     private var shortcutNotes: [ShortcutAction: NSTextField] = [:]
     private let fullScreen = NSButton(checkboxWithTitle: "Hide pets while an app is full screen", target: nil, action: nil)
+    private let screenSharing = NSButton(checkboxWithTitle: "Hide pets while Zoom, Teams or Webex shares the screen",
+                                         target: nil, action: nil)
+    private let captureExclusion = NSButton(checkboxWithTitle: "Make pets invisible to screen capture "
+                                            + "(sharing, recordings and your own screenshots)", target: nil, action: nil)
     private let appsTable = NSTableView()
     private let loginItem = NSButton(checkboxWithTitle: "Launch PokeToy at login", target: nil, action: nil)
     private let loginNote = NSTextField(labelWithString: "")
@@ -35,6 +39,8 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
                                      target: nil, action: nil)
     private let notifications = NSButton(checkboxWithTitle: "Show notifications", target: nil, action: nil)
     private let sound = NSButton(checkboxWithTitle: "Play a sound", target: nil, action: nil)
+    private let pauseWhileClosed = NSButton(checkboxWithTitle: "Pause timers while PokeToy is closed "
+                                            + "(they pick up where they left off)", target: nil, action: nil)
     // Sections, one at a time
     private let sections = NSSegmentedControl(labels: ["General", "Shortcuts & Hiding", "Pomodoro"],
                                               trackingMode: .selectOne, target: nil, action: nil)
@@ -148,12 +154,18 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         battery.action = #selector(batteryChanged)
 
         let general = section([generalGrid, separator(), loginItem, loginNote, battery])
-        let hiding = section([grid, separator(), fullScreen, appsLabel, appsScroll, stack([add, remove, restore])])
+        let hiding = section([grid, separator(), fullScreen, screenSharing, captureExclusion, appsLabel, appsScroll,
+                              stack([add, remove, restore])])
+        screenSharing.target = self
+        screenSharing.action = #selector(screenSharingChanged)
+        captureExclusion.target = self
+        captureExclusion.action = #selector(captureExclusionChanged)
         let pomodoro = section([
             NSTextField(labelWithString: "Sessions (work sessions count as focus, relax ones as breaks):"),
             sessionsList(), pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound,
+            pauseWhileClosed,
         ])
-        for box in [autoBreaks, autoFocus, attention, notifications, sound] {
+        for box in [autoBreaks, autoFocus, attention, notifications, sound, pauseWhileClosed] {
             box.target = self
             box.action = #selector(pomodoroChanged)
         }
@@ -230,7 +242,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             let field = NSTextField(string: session.name)
             field.isBordered = false
             field.drawsBackground = false
-            field.tag = row
+            field.identifier = NSUserInterfaceItemIdentifier(session.id)  // found by id, not by (shifting) row
             field.delegate = self
             field.toolTip = session.isBuiltIn ? "Built in: part of the automatic cycle (can be renamed)" : nil
             return field
@@ -275,14 +287,22 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField, sessions.indices.contains(field.tag) else { return }
-        let id = sessions[field.tag].id
+        guard let field = notification.object as? NSTextField, let id = field.identifier?.rawValue,
+              model.pomodoroOptions.session(id) != nil else { return }
         let name = field.stringValue
         model.updatePreferences { $0.pomodoro.rename(session: id, to: name) }
-        sessionsTable.reloadData()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.sessionsTable.reloadData() }  // after the field has let go
+        }
+    }
+
+    /// Commits a name still being typed before the table changes under it.
+    private func endNameEditing() {
+        window?.makeFirstResponder(nil)
     }
 
     @objc private func sessionMinutesChanged(_ sender: NSStepper) {
+        endNameEditing()
         guard sessions.indices.contains(sender.tag) else { return }
         let id = sessions[sender.tag].id
         let minutes = sender.integerValue
@@ -291,6 +311,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     }
 
     @objc private func sessionKindChanged(_ sender: NSPopUpButton) {
+        endNameEditing()
         guard sessions.indices.contains(sender.tag) else { return }
         let id = sessions[sender.tag].id
         let kind: SessionPreset.Kind = sender.indexOfSelectedItem == 0 ? .work : .relax
@@ -307,6 +328,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     /// Adds a session and starts editing its name.
     private func addSession(name: String, minutes: Int, kind: SessionPreset.Kind) {
+        endNameEditing()
         model.updatePreferences { _ = $0.pomodoro.addSession(name: name, minutes: minutes, kind: kind) }
         sessionsTable.reloadData()
         let row = sessions.count - 1
@@ -316,6 +338,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     }
 
     @objc private func removeSession() {
+        endNameEditing()
         let row = sessionsTable.selectedRow
         guard sessions.indices.contains(row), !sessions[row].isBuiltIn else { return }
         let id = sessions[row].id
@@ -397,13 +420,14 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     @objc private func pomodoroChanged() {
         let values = (autoBreaks.state == .on, autoFocus.state == .on, attention.state == .on,
-                      notifications.state == .on, sound.state == .on)
+                      notifications.state == .on, sound.state == .on, pauseWhileClosed.state == .off)
         model.updatePreferences { prefs in
             prefs.pomodoro.autoStartBreaks = values.0
             prefs.pomodoro.autoStartFocus = values.1
             prefs.pomodoro.seekAttention = values.2
             prefs.pomodoro.notifications = values.3
             prefs.pomodoro.sound = values.4
+            prefs.pomodoro.keepRunningWhileClosed = values.5
         }
     }
 
@@ -441,6 +465,8 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             shortcutNotes[action]?.textColor = recording == action ? .secondaryLabelColor : .systemRed
         }
         fullScreen.state = prefs.hideInFullScreen ? .on : .off
+        screenSharing.state = prefs.hideFromScreenSharing ? .on : .off
+        captureExclusion.state = prefs.excludeFromCapture ? .on : .off
         appsTable.reloadData()
         if !(window?.firstResponder is NSTextView) { sessionsTable.reloadData() }  // not while a name is typed
         updateRemoveButton()
@@ -459,6 +485,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         attention.state = options.seekAttention ? .on : .off
         notifications.state = options.notifications ? .on : .off
         sound.state = options.sound ? .on : .off
+        pauseWhileClosed.state = options.keepRunningWhileClosed ? .off : .on
     }
 
     // MARK: - Actions
@@ -485,6 +512,16 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     @objc private func fullScreenChanged() {
         let on = fullScreen.state == .on
         model.updatePreferences { $0.hideInFullScreen = on }
+    }
+
+    @objc private func screenSharingChanged() {
+        let on = screenSharing.state == .on
+        model.updatePreferences { $0.hideFromScreenSharing = on }
+    }
+
+    @objc private func captureExclusionChanged() {
+        let on = captureExclusion.state == .on
+        model.updatePreferences { $0.excludeFromCapture = on }
     }
 
     @objc private func batteryChanged() {

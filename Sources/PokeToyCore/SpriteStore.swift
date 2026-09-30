@@ -54,8 +54,24 @@ public actor SpriteStore {
             if let data = try? Data(contentsOf: cached), let entries = try? Catalog.parse(trackerJSON: data) {
                 return entries
             }
+            // Offline on a first start: the Pokémon bundled with the app (all complete) are the catalog.
+            if let bundledSprites, let names = try? Self.bundledNames(in: bundledSprites), !names.isEmpty {
+                return names.sorted { $0.key < $1.key }
+                    .map { CatalogEntry(path: $0.key, displayName: $0.value, isComplete: true) }
+            }
             throw error
         }
+    }
+
+    /// The names of the Pokémon bundled with the app (`names.json` beside their sprites).
+    public static func bundledNames(in directory: URL) throws -> [String: String] {
+        try JSONDecoder().decode([String: String].self,
+                                 from: Data(contentsOf: directory.appendingPathComponent("names.json")))
+    }
+
+    /// Paths of sprites downloaded so far (not the bundled ones), e.g. for the Pokédex's "seen".
+    public func downloadedSpritePaths() -> [String] {
+        Self.usablePaths(under: cacheDirectory.appendingPathComponent("sprite"))
     }
 
     /// A local directory with what `SpriteSet` needs for `path`, downloading missing files.
@@ -108,19 +124,21 @@ public actor SpriteStore {
 
     /// Paths (e.g. `0025/0000/0001`) of every usable cached or bundled sprite directory.
     public func cachedSpritePaths() -> [String] {
-        var paths = Set<String>()
         let roots = [cacheDirectory.appendingPathComponent("sprite"), bundledSprites].compactMap { $0 }
-        for root in roots {
-            let rootPath = root.resolvingSymlinksInPath().path
-            guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
-            for case let url as URL in enumerator where url.lastPathComponent == "AnimData.xml" {
-                let directory = url.deletingLastPathComponent()
-                guard Self.isUsable(directory) else { continue }
-                let path = directory.resolvingSymlinksInPath().path
-                guard path.hasPrefix(rootPath) else { continue }
-                let relative = String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                if !relative.isEmpty { paths.insert(relative) }
-            }
+        return Array(Set(roots.flatMap(Self.usablePaths(under:)))).sorted()
+    }
+
+    private static func usablePaths(under root: URL) -> [String] {
+        var paths = Set<String>()
+        let rootPath = root.resolvingSymlinksInPath().path
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else { return [] }
+        for case let url as URL in enumerator where url.lastPathComponent == "AnimData.xml" {
+            let directory = url.deletingLastPathComponent()
+            guard isUsable(directory) else { continue }
+            let path = directory.resolvingSymlinksInPath().path
+            guard path.hasPrefix(rootPath) else { continue }
+            let relative = String(path.dropFirst(rootPath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if !relative.isEmpty { paths.insert(relative) }
         }
         return paths.sorted()
     }

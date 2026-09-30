@@ -36,6 +36,7 @@ final class PetController: PetViewDelegate {
     func show() { wanted = true }
 
     func hide() {
+        taskEditor?.commit()  // an open task editor goes too (keeping what was typed)
         wanted = false
         window.orderOut(nil)
         if bubbleCreated { bubble.orderOut(nil) }
@@ -144,12 +145,25 @@ final class PetController: PetViewDelegate {
     func petViewContextMenu(_ event: NSEvent) {
         guard interactive, let menu = MenuBuilder(model: model).makePetMenu(for: id) else { return }
         model.noticed(pet: id)
+        model.holdPet(id)  // it stays put while its menu is open
         NSMenu.popUpContextMenu(menu, with: event, for: window.petView)
+        // The chosen item may have opened the task editor, which keeps holding the pet until it's done.
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.taskEditor?.isEditing != true else { return }
+                self.model.letGoPet(self.id)
+            }
+        }
     }
 
     /// What the pet looks like right now, and where (for the Poké Ball animation).
     func snapshot() -> (image: CGImage, rect: NSRect)? {
         window.spriteSnapshot
+    }
+
+    /// Saves a task still being typed (PokeToy is quitting).
+    func commitTaskEdit() {
+        taskEditor?.commit()
     }
 
     /// Opens the task editor right above the pet.
@@ -158,10 +172,14 @@ final class PetController: PetViewDelegate {
         taskEditor = editor
         let anchor = badge?.isVisible == true ? badge!.frame : window.frame
         let state = model.taskEditorState(for: id)
+        let snapshot = TaskEditSnapshot(timer: model.timer(for: id), now: Date())  // what the editor was opened on
+        model.holdPet(id)  // stays right under its editor
         editor.edit(text: state.task, minutes: state.minutes, unit: state.unit, hint: state.hint, above: anchor,
                     within: window.screen?.visibleFrame) { [weak self] result in
-            guard let self, let (name, minutes) = result else { return }
-            self.model.saveTask(name, minutes: minutes, on: self.id)
+            guard let self else { return }
+            self.model.letGoPet(self.id)
+            guard let (name, minutes, commit) = result else { return }
+            self.model.saveTask(name, minutes: minutes, snapshot: snapshot, committed: commit, on: self.id)
         }
     }
 
