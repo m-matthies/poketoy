@@ -30,14 +30,14 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - Pets never walk through each other: they hop over, turn back, start playing — or squeeze past if there's truly no other
   way. Pets that meet greet each other, play tag or play-fight, and friends sometimes march in a **follow-the-leader**
   line. Pairs that play a lot become **friends** and then **best friends**, who seek each other out and nap side by side.
-- **Feed** (⌃⌥B — works from any app, no permissions needed) drops an apple or Oran Berry right next to your mouse
+- **Feed** (⌃⌥B by default — works from any app, no permissions needed) drops an apple or Oran Berry right next to your mouse
   pointer; it falls onto whatever is below and the nearest pet runs over to eat it. Treats can be dragged and thrown too;
   uneaten ones spoil after 90 seconds.
-- **Play Fetch** (⌘J in the app menu) drops a ball: pets race for it and the winner brings it back to below your cursor. A game of
+- **Play Fetch** drops a ball: pets race for it and the winner brings it back to below your cursor. A game of
   fetch lasts one minute, then the ball fades away.
 - **Evolution:** after 15 treats and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
   per possible evolution; evolution data comes from [PokeAPI](https://pokeapi.co)).
-- **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run — or fly — across the screen. Press, flick and
+- **Start Catch Game** (⌃⌥G by default, from any app): a 60-second round where wild Pokémon run — or fly — across the screen. Press, flick and
   release to throw; a dotted arc shows where it will go. Hits score 25, catches 100; **legendaries** (rare) are worth 3×,
   **shinies** (1 in 64, they sparkle) 2×, and consecutive hits build a **combo** (up to 2× points) that upgrades your ball to
   a **Great Ball** after 3 hits and an **Ultra Ball** after 5 (better catch chances) — a miss resets it. Catching with the
@@ -49,16 +49,21 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - **Pokédex…** lists every species you've caught, kept as a pet (current and former) or seen (downloaded), in national dex
   order, each with a short description from PokeAPI (type, category and a line of Pokédex text), ✦ for shinies, and how
   complete your collection is.
-- Menu bar paw icon or right-click the Dock icon:
-  - **Show / Hide Pets**, **Feed**, **Play Fetch**, **Start / End Catch Game**,
+- PokeToy lives in the menu bar (no Dock icon). The paw icon's menu:
+  - **Show / Hide Pets** (⌃⌥H by default, from any app), **Feed**, **Play Fetch**, **Start / End Catch Game**,
     **Pokédex…**
   - **Pets** — best friend, evolution progress / Evolve, Release
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×
+  - **Pets…** — rename your pets (the name stays when they evolve) and see their stats: species, together since,
+    treats eaten, best friend, evolution progress; release one from here too.
+  - **Preferences…** — pet speed; how quickly pets nap (often, normal, rarely, never); all screens or the main screen
+    only; the Feed, Catch Game and Show/Hide shortcuts (record your own or clear them); hide pets while an app is full
+    screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); launch at login;
+    battery saver (30 fps on battery, paused while the screen is locked).
   - **Reset Game…** — after asking, releases every pet and erases the Pokédex, scores, friendships, settings and downloaded
     Pokémon; then you choose a new starter.
 - Sprites and portraits download on first use and are cached in `~/Library/Caches/PokeToy`.
-- Clicking the Dock icon shows hidden pets, or opens the Pokédex.
 
 ## Development
 

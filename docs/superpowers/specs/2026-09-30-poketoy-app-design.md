@@ -36,9 +36,10 @@ best friend, evolution progress, and a Release button. Refreshes when pets chang
 On battery power the tick runs at 30 fps instead of 60 (`FramePacing.interval`); while the screen is locked or the
 displays sleep, ticking pauses (the first tick after resuming uses a normal frame time).
 
-## Menus
+## Menus and the Dock
 
-App menu: Preferences… (⌘,), Pets… Status/Dock menu: Pets…, Preferences…. Menu shortcuts show the configured keys.
+PokeToy is a menu-bar-only app (`LSUIElement`, `.accessory` activation policy): no Dock icon, so everything is in the
+paw menu — including Pets… and Preferences…. Menu items show the configured global shortcuts.
 
 ## Testing
 

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import PokeToyCore
 
 /// Menu item that runs a closure; `enabled` (if given) decides whether it can be chosen.
@@ -29,6 +30,30 @@ final class ActionItem: NSMenuItem, NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if let dynamicTitle { menuItem.title = dynamicTitle() }
         return isAllowed?() ?? true
+    }
+}
+
+extension Shortcut {
+    /// The modifier flags for a menu item's key equivalent.
+    var menuModifiers: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        return flags
+    }
+}
+
+extension NSMenuItem {
+    /// Shows a global shortcut next to the item (it works from any app).
+    func show(_ shortcut: Shortcut?) {
+        guard let shortcut, let key = shortcut.keyEquivalent else {
+            keyEquivalent = ""
+            return
+        }
+        keyEquivalent = key
+        keyEquivalentModifierMask = shortcut.menuModifiers
     }
 }
 
@@ -79,19 +104,26 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(ActionItem("Choose Your First Pokémon…", enabled: { [unowned model] in model.needsStarter }) {
             [unowned model] in model.showStarterChoice()
         })
-        let feed = ActionItem("Feed", key: "b", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
-        feed.keyEquivalentModifierMask = [.control, .option]
+        let feed = ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
+        feed.show(model.shortcut(for: .feed))
         appMenu.addItem(feed)
         appMenu.addItem(ActionItem("Play Fetch", key: "j", enabled: { [unowned model] in model.canPlayFetch }) {
             [unowned model] in model.playFetch()
         })
-        appMenu.addItem(ActionItem("Start Catch Game", key: "g", dynamicTitle: { [unowned model] in
+        let game = ActionItem("Start Catch Game", dynamicTitle: { [unowned model] in
             model.isGameRunning ? "End Catch Game" : "Start Catch Game"
         }) { [unowned model] in
             if model.isGameRunning { model.endCatchGame() } else { model.startCatchGame() }
-        })
+        }
+        game.show(model.shortcut(for: .catchGame))
+        appMenu.addItem(game)
         appMenu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
-        appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
+        appMenu.addItem(ActionItem("Pets…") { [unowned model] in model.showPets() })
+        let showHide = ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) }
+        showHide.show(model.shortcut(for: .showHide))
+        appMenu.addItem(showHide)
+        appMenu.addItem(.separator())
+        appMenu.addItem(ActionItem("Preferences…", key: ",") { [unowned model] in model.showPreferences() })
         appMenu.addItem(.separator())
         appMenu.addItem(ActionItem("Reset Game…", enabled: { [unowned model] in model.canReset }) {
             [unowned model] in model.confirmReset()
@@ -116,19 +148,22 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
     private func populate(_ menu: NSMenu, includeQuit: Bool) {
         menu.removeAllItems()
         let hidden = model.settings.hidden
-        menu.addItem(ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) })
+        let showHide = ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) }
+        showHide.show(model.shortcut(for: .showHide))
+        menu.addItem(showHide)
         if model.needsStarter {
             menu.addItem(ActionItem("Choose Your First Pokémon…") { [unowned model] in model.showStarterChoice() })
         }
-        menu.addItem(ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() })
+        let feed = ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
+        feed.show(model.shortcut(for: .feed))
+        menu.addItem(feed)
         menu.addItem(ActionItem("Play Fetch", enabled: { [unowned model] in model.canPlayFetch }) {
             [unowned model] in model.playFetch()
         })
-        if model.isGameRunning {
-            menu.addItem(ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() })
-        } else {
-            menu.addItem(ActionItem("Start Catch Game") { [unowned model] in model.startCatchGame() })
-        }
+        let game = model.isGameRunning ? ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() }
+            : ActionItem("Start Catch Game") { [unowned model] in model.startCatchGame() }
+        game.show(model.shortcut(for: .catchGame))
+        menu.addItem(game)
         menu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
         menu.addItem(.separator())
 
@@ -139,7 +174,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         } else {
             menu.addItem(NSMenuItem(title: "Pets", action: nil, keyEquivalent: ""))
             for pet in pets {
-                let item = NSMenuItem(title: pet.displayName, action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
                 if let friend = model.bestFriendName(of: pet.id) {
                     submenu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
@@ -186,6 +221,8 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         addSubmenu(sizeMenu, titled: "Size", to: menu)
 
         menu.addItem(.separator())
+        menu.addItem(ActionItem("Pets…") { [unowned model] in model.showPets() })
+        menu.addItem(ActionItem("Preferences…") { [unowned model] in model.showPreferences() })
         menu.addItem(ActionItem("Reset Game…", enabled: { [unowned model] in model.canReset }) {
             [unowned model] in model.confirmReset()
         })

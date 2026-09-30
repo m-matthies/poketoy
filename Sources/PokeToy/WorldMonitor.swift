@@ -5,6 +5,11 @@ import PokeToyCore
 @MainActor
 final class WorldMonitor {
     private(set) var world = World(screens: [], surfaces: [])
+    /// Pets stay on the main screen (the one with the menu bar).
+    var mainScreenOnly = false
+    /// The frontmost app, and whether one of its windows covers a whole screen (full screen).
+    private(set) var frontmostBundleID: String?
+    private(set) var frontmostIsFullScreen = false
     private var timer: Timer?
 
     func start() {
@@ -20,13 +25,42 @@ final class WorldMonitor {
         }
     }
 
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    func resume() {
+        guard timer == nil else { return }
+        let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        refresh()
+    }
+
     func refresh() {
-        let screens = NSScreen.screens.map { ScreenInfo(frame: $0.frame, visibleFrame: $0.visibleFrame) }
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let allScreens = NSScreen.screens
+        let screens = (mainScreenOnly ? Array(allScreens.prefix(1)) : allScreens)
+            .map { ScreenInfo(frame: $0.frame, visibleFrame: $0.visibleFrame) }
+        let primaryHeight = allScreens.first?.frame.height ?? 0
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let front = NSWorkspace.shared.frontmostApplication
+        let frontPID = front?.processIdentifier
+        frontmostBundleID = front?.bundleIdentifier
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
+        // Screens in window-list coordinates (origin top left of the main screen).
+        let cgScreens = allScreens.map {
+            CGRect(x: $0.frame.minX, y: primaryHeight - $0.frame.maxY, width: $0.frame.width, height: $0.frame.height)
+        }
+        frontmostIsFullScreen = frontPID != ownPID && list.contains { info in
+            guard (info[kCGWindowOwnerPID as String] as? Int32) == frontPID, (info[kCGWindowLayer as String] as? Int) == 0,
+                  let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDictionary) else { return false }
+            return AutoHide.coversAScreen(bounds, screens: cgScreens)
+        }
         var activeWindowID: Int?
         let windows: [WindowInfo] = list.compactMap { info in
             let pid = info[kCGWindowOwnerPID as String] as? Int32
