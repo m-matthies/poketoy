@@ -66,7 +66,9 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
     **Pokédex…**
   - **Pets** — how many are out; per pet its timer, best friend, evolution progress / Evolve, **Return to Poké Ball** /
     **Let Out**, Release; plus **Return All to Poké Balls** / **Let All Out**. A pet in its Poké Ball is off the screen
-    but keeps its friends, progress and timer — so you choose how many pets are out.
+    but keeps its friends, progress and timer — so you choose how many pets are out. Returning is animated (a Poké
+    Ball pops up, the pet turns red and shrinks into it, the ball wobbles and clicks shut), and so is letting out (a ball
+    drops in, bursts open in a white flash and the pet grows out of it).
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×
   - **Pets…** — rename your pets (the name stays when they evolve) and see their stats: species, together since,

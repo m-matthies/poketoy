@@ -61,6 +61,12 @@ final class PetWindow: NSPanel {
         spriteScale = scale
     }
 
+    /// The sprite being shown and where it is on screen (for the Poké Ball animation).
+    var spriteSnapshot: (image: CGImage, rect: NSRect)? {
+        guard let sprite, isVisible else { return nil }
+        return (sprite.image, NSRect(x: frame.minX, y: frame.minY, width: frame.width, height: frame.height - Self.heartSpace))
+    }
+
     /// True if `screenPoint` is on (or within one pixel of) an opaque sprite pixel.
     func hitsSprite(at screenPoint: CGPoint) -> Bool {
         guard let sprite, isVisible else { return false }

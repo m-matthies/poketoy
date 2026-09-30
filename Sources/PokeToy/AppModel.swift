@@ -573,25 +573,66 @@ final class AppModel {
         guard let index = settings.pets.firstIndex(where: { $0.id == id }), settings.pets[index].inBall != inBall else { return }
         if inBall {
             save()  // remember where it was
+            let look = petsHidden ? nil : petViews[id]?.snapshot()
+            let feet = playground.pet(id)?.body.position
             playground.stowPet(id)
             petViews.removeValue(forKey: id)?.close()
             settings.pets[index].inBall = true
+            if let look, let feet {
+                // The ball lands beside the pet, on the side with more room.
+                let screen = worldMonitor.world.screens.first { $0.frame.contains(feet) }?.visibleFrame
+                let side: CGFloat = feet.x + look.rect.width < (screen?.maxX ?? .infinity) - 40 ? 1 : -1
+                let center = CGPoint(x: feet.x + side * (look.rect.width / 2 + ballSize), y: feet.y + ballSize / 2)
+                playBall(.recall, sprite: look.image, spriteRect: look.rect, ballCenter: center) {}
+            }
         } else {
             settings.pets[index].inBall = false
             let record = settings.pets[index]
             Task {
                 guard let sprites = try? await loadSprites(record.spritePath) else { return }
-                attach(record, sprites: sprites)
-                petViews[id]?.flash()
-                showEmotion(.happy, pet: id)
+                let start = startPoint(for: record)
+                let comeOut = {
+                    self.attach(record, sprites: sprites, at: start)
+                    self.showEmotion(.happy, pet: id)
+                }
+                guard !petsHidden else { return comeOut() }
+                let idle = sprites.animation(.idle)
+                let frame = idle.frames(facing: .down)[0]
+                let scale = playground.scale
+                let size = CGSize(width: CGFloat(frame.image.width) * scale, height: CGFloat(frame.image.height) * scale)
+                let rect = NSRect(x: start.x - size.width / 2, y: start.y - CGFloat(idle.footPadding(facing: .down)) * scale,
+                                  width: size.width, height: size.height)
+                playBall(.release, sprite: frame.image, spriteRect: rect,
+                         ballCenter: CGPoint(x: start.x, y: start.y + ballSize / 2), then: comeOut)
             }
         }
         save()
         petsChanged()
     }
 
+    /// Returns or lets out every pet, one after another.
     func setAllInBall(_ inBall: Bool) {
-        for pet in settings.pets { setInBall(pet.id, inBall) }
+        let ids = settings.pets.filter { $0.inBall != inBall }.map(\.id)
+        for (order, id) in ids.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(order) * 0.18) { [weak self] in
+                MainActor.assumeIsolated { self?.setInBall(id, inBall) }
+            }
+        }
+    }
+
+    private var ballAnimations: [BallAnimationWindow] = []
+    private var ballSize: CGFloat { CGFloat(ItemArt.size) * playground.scale * 1.4 }
+
+    private func playBall(_ kind: BallAnimation.Kind, sprite: CGImage, spriteRect: NSRect, ballCenter: CGPoint,
+                          then done: @escaping () -> Void) {
+        let animation = BallAnimationWindow(kind: kind, sprite: sprite, spriteRect: spriteRect, ballCenter: ballCenter,
+                                            ballSize: ballSize)
+        ballAnimations.append(animation)
+        animation.play { [weak self, weak animation] in
+            self?.ballAnimations.removeAll { $0 === animation }
+            animation?.close()
+            done()
+        }
     }
 
     /// Asks first, then releases the pet.
@@ -966,12 +1007,17 @@ final class AppModel {
         return try SpriteSet(directory: directory)
     }
 
-    private func attach(_ record: PetRecord, sprites: SpriteSet) {
-        // A pet removed while its sprites were loading is dropped.
-        guard settings.pets.contains(where: { $0.id == record.id && !$0.inBall }), petViews[record.id] == nil else { return }
+    /// Where a pet comes back: its last spot if that's still on a screen, else somewhere along the top.
+    private func startPoint(for record: PetRecord) -> CGPoint {
         let world = worldMonitor.world
-        let start = record.position.flatMap { world.isOnAnyScreen($0, margin: 0) ? $0 : nil }
+        return record.position.flatMap { world.isOnAnyScreen($0, margin: 0) ? $0 : nil }
             ?? world.spawnPoint(fraction: .random(in: 0.2...0.8))
+    }
+
+    private func attach(_ record: PetRecord, sprites: SpriteSet, at point: CGPoint? = nil) {
+        // A pet removed (or put in its ball) while its sprites were loading is dropped.
+        guard settings.pets.contains(where: { $0.id == record.id && !$0.inBall }), petViews[record.id] == nil else { return }
+        let start = point ?? startPoint(for: record)
         playground.addPet(id: record.id, role: .own, metrics: PetMetrics(sprites: sprites), at: start)
         let view = PetController(id: record.id, sprites: sprites, model: self, interactive: true)
         if !petsHidden { view.show() }

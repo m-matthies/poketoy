@@ -147,6 +147,11 @@ final class PetController: PetViewDelegate {
         NSMenu.popUpContextMenu(menu, with: event, for: window.petView)
     }
 
+    /// What the pet looks like right now, and where (for the Poké Ball animation).
+    func snapshot() -> (image: CGImage, rect: NSRect)? {
+        window.spriteSnapshot
+    }
+
     /// Opens the task editor right above the pet.
     func editTask() {
         let editor = taskEditor ?? TaskEditorPanel()

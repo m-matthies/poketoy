@@ -76,3 +76,12 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
 - Menus: "Add 5 Minutes" and "Take Off 5 Minutes" (when more than 6 minutes are left) for running or paused sessions
   (`Pomodoro.adjust(by:)`; at least a minute always stays). The editor item reads "Start a Task…", "Edit Task & Time
   Left…" or "Name a Task…" depending on the timer.
+
+## Poké Ball animations (added)
+
+- `BallAnimation` (core, a pure timeline, tested): **recall** (1.1 s) — a ball pops up beside the pet (on the side with
+  room), the pet turns red and shrinks into it, the ball wobbles twice and fades; **release** (1.0 s) — a ball drops
+  in and bounces at the pet's spot, bursts open in a white flash, the pet grows out glowing white, the ball fades.
+- `BallAnimationWindow` draws it over the spot with the pet's current sprite (recall) or its idle sprite (release) and
+  the Poké Ball pixel art. The pet leaves the playground at once when recalled, and joins it when the release
+  animation ends. Return All / Let All Out stagger the pets by 0.18 s. No animation while pets are hidden.
