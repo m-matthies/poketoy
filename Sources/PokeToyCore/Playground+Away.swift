@@ -13,7 +13,8 @@ extension Playground {
     mutating func awayRules() {
         if userIdle >= Self.awayAfter {
             userAway = true
-            for i in pets.indices where pets[i].role == .own && pets[i].visible && pets[i].body.isGrounded {
+            for i in pets.indices where pets[i].role == .own && pets[i].visible && pets[i].body.isGrounded
+                && attention[pets[i].id] == nil {
                 if pets[i].brain.isSleeping { pets[i].brain.sleepIndefinitely() } else { pets[i].fallAsleep(indefinitely: true) }
             }
         } else if userAway && userIdle < 2 {

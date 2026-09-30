@@ -193,6 +193,8 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                 let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
                 addPetItems(for: pet, to: submenu)
+                if submenu.numberOfItems > 0 { submenu.addItem(.separator()) }
+                submenu.addItem(ActionItem("Release…") { [unowned model] in model.confirmRelease(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)
             }
@@ -232,7 +234,8 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         menu.addItem(ActionItem("Quit PokeToy") { NSApp.terminate(nil) })
     }
 
-    /// A pet's own menu (right-click or ⌃-click it): its name, the Pomodoro timer, then its pet items.
+    /// A pet's own menu (right-click or ⌃-click it): its name, the Pomodoro timer, then best friend and evolution
+    /// (releasing is left to the paw menu and the Pets window, away from a quick right-click).
     func makePetMenu(for id: UUID) -> NSMenu? {
         guard let pet = model.settings.pets.first(where: { $0.id == id }) else { return nil }
         model.refreshEvolutionOptions()
@@ -242,16 +245,22 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         menu.addItem(title)
         menu.addItem(.separator())
         addPomodoroItems(to: menu, petID: id)
-        menu.addItem(.separator())
-        addPetItems(for: pet, to: menu)
+        let petItems = NSMenu()
+        addPetItems(for: pet, to: petItems)
+        if petItems.numberOfItems > 0 {
+            menu.addItem(.separator())
+            for item in petItems.items {
+                petItems.removeItem(item)
+                menu.addItem(item)
+            }
+        }
         return menu
     }
 
-    /// Best friend, evolution and Release for one pet.
+    /// Best friend and evolution for one pet.
     private func addPetItems(for pet: PetRecord, to menu: NSMenu) {
         if let friend = model.bestFriendName(of: pet.id) {
             menu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
-            menu.addItem(.separator())
         }
         switch model.evolutionStatus(of: pet.id) {
         case .ready(let options):
@@ -260,17 +269,14 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                     model.evolve(pet.id, into: option)
                 })
             }
-            menu.addItem(.separator())
         case .notReady(let treatsLeft, let needsBestFriend):
             let treats = treatsLeft == 1 ? "1 more treat" : "\(treatsLeft) more treats"
             let text = treatsLeft == 0 ? "Evolves once it has a best friend"
                 : "Evolves after \(treats)" + (needsBestFriend ? " and a best friend" : "")
             menu.addItem(NSMenuItem(title: text, action: nil, keyEquivalent: ""))
-            menu.addItem(.separator())
         case .none:
             break
         }
-        menu.addItem(ActionItem("Release…") { [unowned model] in model.confirmRelease(pet.id) })
     }
 
     /// The Pomodoro timer: start one (on `petID`, or the first pet from the paw menu), or control the running one.
@@ -279,7 +285,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         guard let timer = model.pomodoro else {
             menu.addItem(NSMenuItem(title: "Pomodoro", action: nil, keyEquivalent: ""))
             for phase in Pomodoro.Phase.allCases {
-                let minutes = Int(phase.duration / 60)
+                let minutes = model.pomodoroOptions.minutes(of: phase)
                 menu.addItem(ActionItem("\(phase == .focus ? "🍅" : "☕️") \(phase.title) — \(minutes) min") {
                     [unowned model] in model.startPomodoro(phase, on: target)
                 })
@@ -288,7 +294,11 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         }
         menu.addItem(NSMenuItem(title: model.pomodoroStatus ?? "Pomodoro", action: nil, keyEquivalent: ""))
         if timer.isWaiting {
-            menu.addItem(ActionItem("🍅 Start Focus — 25 min") { [unowned model] in model.startPomodoro(.focus, on: target) })
+            let next = timer.phase
+            let icon = next == .focus ? "🍅" : "☕️"
+            menu.addItem(ActionItem("\(icon) Start \(next.title) — \(model.pomodoroOptions.minutes(of: next)) min") {
+                [unowned model] in model.startPomodoro(next, on: target)
+            })
         } else if timer.isPaused {
             menu.addItem(ActionItem("Resume") { [unowned model] in model.resumePomodoro() })
         } else {

@@ -141,6 +141,7 @@ final class PetController: PetViewDelegate {
 
     func petViewContextMenu(_ event: NSEvent) {
         guard interactive, let menu = MenuBuilder(model: model).makePetMenu(for: id) else { return }
+        model.noticedPets()
         NSMenu.popUpContextMenu(menu, with: event, for: window.petView)
     }
 

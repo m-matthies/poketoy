@@ -225,11 +225,14 @@ final class AppModel {
     // MARK: - Pomodoro
 
     var pomodoro: Pomodoro? { settings.pomodoro }
+    var pomodoroOptions: PomodoroOptions { settings.preferences.pomodoro }
 
     /// "🍅 Focus — 12:34 left", for menus.
     var pomodoroStatus: String? {
         guard let timer = settings.pomodoro else { return nil }
-        if timer.isWaiting { return "☕️ Break's over — ready to focus?" }
+        if timer.isWaiting {
+            return timer.phase == .focus ? "🍅 Ready for the next focus?" : "☕️ Time for a \(timer.phase.title.lowercased())"
+        }
         let icon = timer.phase == .focus ? "🍅" : "☕️"
         return "\(icon) \(timer.phase.title) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
             + (timer.isPaused ? " (paused)" : "")
@@ -238,7 +241,7 @@ final class AppModel {
     /// The countdown shown above the pet carrying the timer.
     func pomodoroBadge(for id: UUID) -> String? {
         guard let timer = settings.pomodoro, timer.petID == id else { return nil }
-        if timer.isWaiting { return "🍅 Ready?" }
+        if timer.isWaiting { return timer.phase == .focus ? "🍅 Ready?" : "☕️ Break?" }
         let icon = timer.isPaused ? "⏸" : timer.phase == .focus ? "🍅" : "☕️"
         return "\(icon) \(Pomodoro.clock(timer.remaining(at: Date())))"
     }
@@ -246,33 +249,38 @@ final class AppModel {
     func startPomodoro(_ phase: Pomodoro.Phase, on id: UUID) {
         if var timer = settings.pomodoro {
             timer.petID = id
-            timer.start(phase, at: Date())  // keeps the count towards the long break
+            timer.start(phase, at: Date(), options: pomodoroOptions)  // keeps the count towards the long break
             settings.pomodoro = timer
         } else {
-            settings.pomodoro = Pomodoro(petID: id, phase: phase, now: Date())
+            settings.pomodoro = Pomodoro(petID: id, phase: phase, now: Date(), options: pomodoroOptions)
         }
-        notifier.prepare()
+        playground.stopSeekingAttention()
+        if pomodoroOptions.notifications { notifier.prepare() }
         save()
     }
 
     func pausePomodoro() {
         settings.pomodoro?.pause(at: Date())
+        playground.stopSeekingAttention()
         save()
     }
 
     func resumePomodoro() {
         settings.pomodoro?.resume(at: Date())
+        playground.stopSeekingAttention()
         save()
     }
 
     /// Ends the current focus or break now (quietly: the player chose it).
     func skipPomodoro() {
-        _ = settings.pomodoro?.skip(at: Date())
+        _ = settings.pomodoro?.skip(at: Date(), options: pomodoroOptions)
+        playground.stopSeekingAttention()
         save()
     }
 
     func stopPomodoro() {
         settings.pomodoro = nil
+        playground.stopSeekingAttention()
         save()
     }
 
@@ -281,23 +289,34 @@ final class AppModel {
         save()
     }
 
+    /// The user is looking (opened a pet's menu): pets can stop trying to get their attention.
+    func noticedPets() {
+        playground.stopSeekingAttention()
+    }
+
     /// When a focus or break runs out: the pet reacts and a notification says what's next.
     private func checkPomodoro() {
-        guard var timer = settings.pomodoro, let outcome = timer.advance(at: Date()) else { return }
+        let options = pomodoroOptions
+        guard var timer = settings.pomodoro, let outcome = timer.advance(at: Date(), options: options) else { return }
         settings.pomodoro = timer
         save()
         let name = settings.pets.first { $0.id == timer.petID }?.name ?? "Your Pokémon"
+        let title: String, body: String
         switch outcome {
         case .focusDone(let next):
             playground.celebrate(timer.petID)
-            let minutes = Int(next.duration / 60)
-            notifier.post(title: "Focus done! 🍅",
-                          body: "\(name) says: time for a \(minutes)-minute \(next == .longBreak ? "long " : "")break.")
+            title = "Focus done! 🍅"
+            let rest = "a \(options.minutes(of: next))-minute \(next == .longBreak ? "long " : "")break"
+            body = timer.isWaiting ? "\(name) says: time for \(rest) — right-click it to start."
+                : "\(name) says: time for \(rest)."
         case .breakDone:
             playground.nudge(timer.petID)
-            notifier.post(title: "Break's over ☕️",
-                          body: "\(name) is ready when you are — right-click it to start the next focus.")
+            title = "Break's over ☕️"
+            body = timer.isWaiting ? "\(name) is ready when you are — right-click it to start the next focus."
+                : "\(name) says: back to focus for \(options.focusMinutes) minutes!"
         }
+        if options.seekAttention { playground.seekAttention(timer.petID) }
+        notifier.post(title: title, body: body, notify: options.notifications, sound: options.sound)
     }
 
     // MARK: - Launch at login

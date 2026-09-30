@@ -20,6 +20,22 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     private let loginNote = NSTextField(labelWithString: "")
     private let battery = NSButton(checkboxWithTitle: "Battery saver: 30 fps on battery, pause while the screen is locked",
                                    target: nil, action: nil)
+    // Pomodoro
+    private enum PomodoroNumber: Int, CaseIterable {
+        case focus, shortBreak, longBreak, rhythm
+    }
+    private var pomodoroSteppers: [PomodoroNumber: NSStepper] = [:]
+    private var pomodoroLabels: [PomodoroNumber: NSTextField] = [:]
+    private let autoBreaks = NSButton(checkboxWithTitle: "Start breaks automatically", target: nil, action: nil)
+    private let autoFocus = NSButton(checkboxWithTitle: "Start the next focus automatically", target: nil, action: nil)
+    private let attention = NSButton(checkboxWithTitle: "Pets come to get your attention when a timer ends",
+                                     target: nil, action: nil)
+    private let notifications = NSButton(checkboxWithTitle: "Show notifications", target: nil, action: nil)
+    private let sound = NSButton(checkboxWithTitle: "Play a sound", target: nil, action: nil)
+    // Sections, one at a time
+    private let sections = NSSegmentedControl(labels: ["General", "Shortcuts & Hiding", "Pomodoro"],
+                                              trackingMode: .selectOne, target: nil, action: nil)
+    private var sectionViews: [NSView] = []
     /// The shortcut being recorded, and the key monitor doing it.
     private var recording: ShortcutAction?
     private var keyMonitor: Any?
@@ -74,11 +90,16 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         screens.target = self
         screens.action = #selector(screensChanged)
 
-        var rows: [[NSView]] = [
+        let generalGrid = NSGridView(views: [
             [label("Pet speed:"), stack([speed, speedLabel])],
             [label("Naps:"), naps],
             [label("Pets use:"), screens],
-        ]
+        ])
+        generalGrid.column(at: 0).xPlacement = .trailing
+        generalGrid.rowSpacing = 10
+        generalGrid.columnSpacing = 8
+
+        var rows: [[NSView]] = []
         for action in ShortcutAction.allCases {
             let button = NSButton(title: "", target: self, action: #selector(recordShortcut(_:)))
             button.tag = ShortcutAction.allCases.firstIndex(of: action)!
@@ -123,13 +144,23 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         battery.target = self
         battery.action = #selector(batteryChanged)
 
-        let content = NSStackView(views: [
-            grid, separator(), fullScreen, appsLabel, appsScroll, stack([add, remove, restore]), separator(),
-            loginItem, loginNote, battery,
-        ])
+        let general = section([generalGrid, separator(), loginItem, loginNote, battery])
+        let hiding = section([grid, separator(), fullScreen, appsLabel, appsScroll, stack([add, remove, restore])])
+        let pomodoro = section([pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound])
+        for box in [autoBreaks, autoFocus, attention, notifications, sound] {
+            box.target = self
+            box.action = #selector(pomodoroChanged)
+        }
+        sectionViews = [general, hiding, pomodoro]
+        sections.target = self
+        sections.action = #selector(sectionChanged)
+        sections.selectedSegment = 0
+
+        let content = NSStackView(views: [sections] + sectionViews)
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 10
+        content.spacing = 16
+        content.detachesHiddenViews = true
         content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         content.translatesAutoresizingMaskIntoConstraints = false
         let root = NSView()
@@ -140,10 +171,106 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             content.topAnchor.constraint(equalTo: root.topAnchor),
             content.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            appsScroll.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40),
+            content.widthAnchor.constraint(greaterThanOrEqualToConstant: 520),
+            appsScroll.widthAnchor.constraint(equalToConstant: 480),
+            sections.centerXAnchor.constraint(equalTo: content.centerXAnchor),
         ])
-        window.setContentSize(content.fittingSize)
+        showSection(0)
         window.center()
+    }
+
+    private func section(_ views: [NSView]) -> NSStackView {
+        let column = NSStackView(views: views)
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 10
+        return column
+    }
+
+    /// Focus, break lengths and the long-break rhythm, each with a stepper.
+    private func pomodoroGrid() -> NSGridView {
+        let titles: [PomodoroNumber: String] = [.focus: "Focus:", .shortBreak: "Short break:", .longBreak: "Long break:",
+                                                .rhythm: "Long break after:"]
+        var rows: [[NSView]] = []
+        for number in PomodoroNumber.allCases {
+            let range = number == .focus ? PomodoroOptions.focusRange
+                : number == .rhythm ? PomodoroOptions.rhythmRange : PomodoroOptions.breakRange
+            let stepper = NSStepper()
+            stepper.minValue = Double(range.lowerBound)
+            stepper.maxValue = Double(range.upperBound)
+            stepper.increment = 1
+            stepper.valueWraps = false
+            stepper.autorepeat = true
+            stepper.tag = number.rawValue
+            stepper.target = self
+            stepper.action = #selector(pomodoroNumberChanged(_:))
+            let value = NSTextField(labelWithString: "")
+            value.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+            value.widthAnchor.constraint(greaterThanOrEqualToConstant: 90).isActive = true
+            pomodoroSteppers[number] = stepper
+            pomodoroLabels[number] = value
+            rows.append([label(titles[number]!), stack([value, stepper])])
+        }
+        let grid = NSGridView(views: rows)
+        grid.column(at: 0).xPlacement = .trailing
+        grid.rowSpacing = 8
+        grid.columnSpacing = 8
+        return grid
+    }
+
+    @objc private func sectionChanged() {
+        showSection(sections.selectedSegment)
+    }
+
+    /// Shows one section and fits the window to it, keeping its top edge in place.
+    private func showSection(_ index: Int) {
+        stopRecording()
+        for (i, view) in sectionViews.enumerated() { view.isHidden = i != index }
+        guard let window, let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let size = content.fittingSize
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: true, animate: window.isVisible)
+    }
+
+    private func pomodoroValue(_ number: PomodoroNumber, _ options: PomodoroOptions) -> Int {
+        switch number {
+        case .focus: return options.focusMinutes
+        case .shortBreak: return options.shortBreakMinutes
+        case .longBreak: return options.longBreakMinutes
+        case .rhythm: return options.focusesPerLongBreak
+        }
+    }
+
+    private func pomodoroText(_ number: PomodoroNumber, _ value: Int) -> String {
+        number == .rhythm ? (value == 1 ? "1 focus" : "\(value) focuses") : "\(value) min"
+    }
+
+    @objc private func pomodoroNumberChanged(_ sender: NSStepper) {
+        guard let number = PomodoroNumber(rawValue: sender.tag) else { return }
+        let value = Int(sender.intValue)
+        model.updatePreferences { prefs in
+            switch number {
+            case .focus: prefs.pomodoro.focusMinutes = value
+            case .shortBreak: prefs.pomodoro.shortBreakMinutes = value
+            case .longBreak: prefs.pomodoro.longBreakMinutes = value
+            case .rhythm: prefs.pomodoro.focusesPerLongBreak = value
+            }
+        }
+        pomodoroLabels[number]?.stringValue = pomodoroText(number, value)
+    }
+
+    @objc private func pomodoroChanged() {
+        let values = (autoBreaks.state == .on, autoFocus.state == .on, attention.state == .on,
+                      notifications.state == .on, sound.state == .on)
+        model.updatePreferences { prefs in
+            prefs.pomodoro.autoStartBreaks = values.0
+            prefs.pomodoro.autoStartFocus = values.1
+            prefs.pomodoro.seekAttention = values.2
+            prefs.pomodoro.notifications = values.3
+            prefs.pomodoro.sound = values.4
+        }
     }
 
     private func label(_ text: String) -> NSTextField {
@@ -185,6 +312,17 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         loginNote.stringValue = model.launchAtLoginNeedsApproval
             ? "Allow PokeToy in System Settings → General → Login Items." : ""
         battery.state = prefs.batterySaver ? .on : .off
+        let options = prefs.pomodoro
+        for number in PomodoroNumber.allCases {
+            let value = pomodoroValue(number, options)
+            pomodoroSteppers[number]?.integerValue = value
+            pomodoroLabels[number]?.stringValue = pomodoroText(number, value)
+        }
+        autoBreaks.state = options.autoStartBreaks ? .on : .off
+        autoFocus.state = options.autoStartFocus ? .on : .off
+        attention.state = options.seekAttention ? .on : .off
+        notifications.state = options.notifications ? .on : .off
+        sound.state = options.sound ? .on : .off
     }
 
     // MARK: - Actions

@@ -15,14 +15,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func post(title: String, body: String) {
+    func post(title: String, body: String, notify: Bool = true, sound: Bool = true) {
+        if sound { NSSound(named: "Glass")?.play() }  // also when notifications are turned off in System Settings
+        guard notify else { return }
         prepare()
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content,
                                                                      trigger: nil))
-        NSSound(named: "Glass")?.play()  // also when notifications are turned off
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,

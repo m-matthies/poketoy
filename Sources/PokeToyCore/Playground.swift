@@ -176,6 +176,8 @@ public struct Playground: Sendable {
     var blockTimes: [UUID: [Double]] = [:]
     /// Pets racing for the fetch ball.
     var fetchRacers: Set<UUID> = []
+    /// Pets trying to get the user's attention.
+    var attention: [UUID: AttentionSeeker] = [:]
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
     var wildShiny: Set<UUID> = []
@@ -285,6 +287,7 @@ public struct Playground: Sendable {
     public mutating func handle(_ event: PetEvent, pet id: UUID) {
         guard let i = index(of: id), pets[i].visible else { return }
         if event == .pressed || event == .click || event == .dragBegan { strokes[id] = nil }  // a click is never a stroke
+        if event == .click || event == .dragBegan, attention[id] != nil { stopSeekingAttention() }  // noticed!
         if pets[i].role == .own, event == .pressed || event == .click,
            let until = annoyedUntil[id], clock < until { return }  // storming off: presses and clicks are ignored
         if event == .click, pets[i].role == .own, noteClick(i) { return }  // this click made it annoyed
@@ -394,6 +397,7 @@ public struct Playground: Sendable {
         socialRules(dt: dt, world: world)
         feedingRules(world: world)
         fetchRules(world: world)
+        attentionRules(dt: dt)
         passingRules(dt: dt, world: world)
     }
 
@@ -409,7 +413,7 @@ public struct Playground: Sendable {
         let finished = pet.animator.finished && pet.animator.kind == pet.brain.pose.anim
             && pet.poseToken == pet.brain.pose.token
         let context = BrainContext(dt: dt, world: world, cursor: cursor,
-                                   cursorMode: pet.role == .own ? cursorMode : .off,
+                                   cursorMode: pet.role != .own ? .off : attention[pet.id] != nil ? .follow : cursorMode,
                                    halfWidth: pet.halfWidth, animationFinished: finished,
                                    timeOfDay: timeOfDay, reduceMotion: reduceMotion,
                                    calm: (calmedUntil[pet.id] ?? 0) > clock,

@@ -106,3 +106,70 @@ import Testing
         #expect(later.contains(.emotion(petID: ids[0], .surprised)))
     }
 }
+
+@Suite struct PomodoroPreferencesTests {
+    let pet = UUID()
+    let start = Date(timeIntervalSince1970: 1_000_000)
+
+    func at(_ minutes: Double) -> Date {
+        start.addingTimeInterval(minutes * 60)
+    }
+
+    @Test func defaultsAreTheClassicPomodoro() {
+        let options = PomodoroOptions()
+        #expect(options.focusMinutes == 25 && options.shortBreakMinutes == 5 && options.longBreakMinutes == 15)
+        #expect(options.focusesPerLongBreak == 4)
+        #expect(options.autoStartBreaks && !options.autoStartFocus)
+        #expect(options.notifications && options.sound)
+        #expect(options.duration(of: .focus) == 25 * 60)
+        #expect(Preferences().pomodoro == options)
+    }
+
+    @Test func customLengths() {
+        var options = PomodoroOptions()
+        options.focusMinutes = 50
+        options.shortBreakMinutes = 10
+        var timer = Pomodoro(petID: pet, phase: .focus, now: start, options: options)
+        #expect(timer.remaining(at: start) == 50 * 60)
+        #expect(timer.advance(at: at(50), options: options) == .focusDone(next: .shortBreak))
+        #expect(timer.remaining(at: at(50)) == 10 * 60)
+    }
+
+    @Test func customLongBreakRhythm() {
+        var options = PomodoroOptions()
+        options.focusesPerLongBreak = 2
+        var timer = Pomodoro(petID: pet, phase: .focus, now: start, options: options)
+        #expect(timer.skip(at: start, options: options) == .focusDone(next: .shortBreak))
+        _ = timer.skip(at: start, options: options)
+        timer.start(.focus, at: start, options: options)
+        #expect(timer.skip(at: start, options: options) == .focusDone(next: .longBreak))
+    }
+
+    @Test func breaksCanWaitToBeStarted() {
+        var options = PomodoroOptions()
+        options.autoStartBreaks = false
+        var timer = Pomodoro(petID: pet, phase: .focus, now: start, options: options)
+        #expect(timer.advance(at: at(25), options: options) == .focusDone(next: .shortBreak))
+        #expect(timer.isWaiting)
+        #expect(timer.phase == .shortBreak)  // what starts next
+    }
+
+    @Test func theNextFocusCanStartByItself() {
+        var options = PomodoroOptions()
+        options.autoStartFocus = true
+        var timer = Pomodoro(petID: pet, phase: .shortBreak, now: start, options: options)
+        #expect(timer.advance(at: at(5), options: options) == .breakDone)
+        #expect(!timer.isWaiting)
+        #expect(timer.phase == .focus)
+        #expect(timer.remaining(at: at(5)) == 25 * 60)
+    }
+
+    @Test func optionsDecodeTolerantly() throws {
+        let json = #"{"preferences": {"pomodoro": {"focusMinutes": 500, "shortBreakMinutes": 0, "sound": false}}}"#
+        let options = try JSONDecoder().decode(Settings.self, from: Data(json.utf8)).preferences.pomodoro
+        #expect(options.focusMinutes == PomodoroOptions.focusRange.upperBound)
+        #expect(options.shortBreakMinutes == PomodoroOptions.breakRange.lowerBound)
+        #expect(options.longBreakMinutes == 15)
+        #expect(!options.sound && options.notifications)
+    }
+}

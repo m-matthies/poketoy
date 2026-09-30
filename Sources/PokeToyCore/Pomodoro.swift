@@ -1,7 +1,65 @@
 import Foundation
 
-/// A Pomodoro timer set on a pet: 25 minutes of focus, then a 5-minute break (15 after every fourth focus).
-/// A finished focus starts its break at once; a finished break waits for the next focus to be started.
+/// Pomodoro preferences: phase lengths, the long-break rhythm, what starts by itself, and how you're told.
+public struct PomodoroOptions: Codable, Equatable, Sendable {
+    public static let focusRange = 1...120
+    public static let breakRange = 1...60
+    public static let rhythmRange = 2...10
+
+    public var focusMinutes = 25
+    public var shortBreakMinutes = 5
+    public var longBreakMinutes = 15
+    /// A long break after this many focuses.
+    public var focusesPerLongBreak = 4
+    public var autoStartBreaks = true
+    public var autoStartFocus = false
+    public var notifications = true
+    public var sound = true
+    /// Pets come to the pointer and hop about when a focus or break ends.
+    public var seekAttention = true
+
+    public init() {}
+
+    public func duration(of phase: Pomodoro.Phase) -> Double {
+        switch phase {
+        case .focus: return Double(focusMinutes * 60)
+        case .shortBreak: return Double(shortBreakMinutes * 60)
+        case .longBreak: return Double(longBreakMinutes * 60)
+        }
+    }
+
+    public func minutes(of phase: Pomodoro.Phase) -> Int {
+        Int(duration(of: phase) / 60)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case focusMinutes, shortBreakMinutes, longBreakMinutes, focusesPerLongBreak, autoStartBreaks, autoStartFocus,
+             notifications, sound, seekAttention
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = PomodoroOptions()
+        func int(_ key: CodingKeys, _ fallback: Int, _ range: ClosedRange<Int>) -> Int {
+            min(max((try? c.decodeIfPresent(Int.self, forKey: key)) ?? fallback, range.lowerBound), range.upperBound)
+        }
+        func bool(_ key: CodingKeys, _ fallback: Bool) -> Bool {
+            (try? c.decodeIfPresent(Bool.self, forKey: key)) ?? fallback
+        }
+        focusMinutes = int(.focusMinutes, d.focusMinutes, Self.focusRange)
+        shortBreakMinutes = int(.shortBreakMinutes, d.shortBreakMinutes, Self.breakRange)
+        longBreakMinutes = int(.longBreakMinutes, d.longBreakMinutes, Self.breakRange)
+        focusesPerLongBreak = int(.focusesPerLongBreak, d.focusesPerLongBreak, Self.rhythmRange)
+        autoStartBreaks = bool(.autoStartBreaks, d.autoStartBreaks)
+        autoStartFocus = bool(.autoStartFocus, d.autoStartFocus)
+        notifications = bool(.notifications, d.notifications)
+        sound = bool(.sound, d.sound)
+        seekAttention = bool(.seekAttention, d.seekAttention)
+    }
+}
+
+/// A Pomodoro timer set on a pet: focus, then a short break (a long one after every few focuses), as set in
+/// `PomodoroOptions`. What comes next starts by itself, or waits to be started (`phase` is then the one to start).
 public struct Pomodoro: Codable, Equatable, Sendable {
     public enum Phase: String, Codable, CaseIterable, Sendable {
         case focus, shortBreak, longBreak
@@ -28,17 +86,16 @@ public struct Pomodoro: Codable, Equatable, Sendable {
     public enum State: Codable, Equatable, Sendable {
         case running(endsAt: Date)
         case paused(remaining: Double)
-        /// A break is over; the next focus hasn't been started.
+        /// A phase is over and the next one (`phase`) hasn't been started.
         case waiting
     }
 
     public enum Outcome: Equatable, Sendable {
-        /// A focus finished and `next` (a break) has started.
+        /// A focus finished; `next` (a break) comes now — started, or waiting to be.
         case focusDone(next: Phase)
         case breakDone
     }
 
-    public static let focusesPerLongBreak = 4
 
     /// The pet showing the timer.
     public var petID: UUID
@@ -47,10 +104,10 @@ public struct Pomodoro: Codable, Equatable, Sendable {
     /// Focus sessions finished since the last long break.
     public private(set) var focusesDone: Int
 
-    public init(petID: UUID, phase: Phase, now: Date, focusesDone: Int = 0) {
+    public init(petID: UUID, phase: Phase, now: Date, focusesDone: Int = 0, options: PomodoroOptions = PomodoroOptions()) {
         self.petID = petID
         self.phase = phase
-        state = .running(endsAt: now.addingTimeInterval(phase.duration))
+        state = .running(endsAt: now.addingTimeInterval(options.duration(of: phase)))
         self.focusesDone = focusesDone
     }
 
@@ -70,9 +127,9 @@ public struct Pomodoro: Codable, Equatable, Sendable {
         }
     }
 
-    public mutating func start(_ phase: Phase, at now: Date) {
+    public mutating func start(_ phase: Phase, at now: Date, options: PomodoroOptions = PomodoroOptions()) {
         self.phase = phase
-        state = .running(endsAt: now.addingTimeInterval(phase.duration))
+        state = .running(endsAt: now.addingTimeInterval(options.duration(of: phase)))
     }
 
     public mutating func pause(at now: Date) {
@@ -86,28 +143,37 @@ public struct Pomodoro: Codable, Equatable, Sendable {
     }
 
     /// Finishes the phase if its time is up (the break starts from `now`, e.g. after the Mac slept through the end).
-    public mutating func advance(at now: Date) -> Outcome? {
+    public mutating func advance(at now: Date, options: PomodoroOptions = PomodoroOptions()) -> Outcome? {
         guard case .running(let endsAt) = state, now >= endsAt else { return nil }
-        return finish(at: now)
+        return finish(at: now, options: options)
     }
 
     /// Ends the current phase right away.
-    public mutating func skip(at now: Date) -> Outcome? {
+    public mutating func skip(at now: Date, options: PomodoroOptions = PomodoroOptions()) -> Outcome? {
         guard !isWaiting else { return nil }
-        return finish(at: now)
+        return finish(at: now, options: options)
     }
 
-    private mutating func finish(at now: Date) -> Outcome {
+    private mutating func finish(at now: Date, options: PomodoroOptions) -> Outcome {
         switch phase {
         case .focus:
             focusesDone += 1
-            let next: Phase = focusesDone >= Self.focusesPerLongBreak ? .longBreak : .shortBreak
-            start(next, at: now)
+            let next: Phase = focusesDone >= options.focusesPerLongBreak ? .longBreak : .shortBreak
+            startOrWait(next, autoStart: options.autoStartBreaks, at: now, options: options)
             return .focusDone(next: next)
         case .shortBreak, .longBreak:
             if phase == .longBreak { focusesDone = 0 }
-            state = .waiting
+            startOrWait(.focus, autoStart: options.autoStartFocus, at: now, options: options)
             return .breakDone
+        }
+    }
+
+    private mutating func startOrWait(_ next: Phase, autoStart: Bool, at now: Date, options: PomodoroOptions) {
+        if autoStart {
+            start(next, at: now, options: options)
+        } else {
+            phase = next
+            state = .waiting
         }
     }
 
