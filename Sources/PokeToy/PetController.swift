@@ -12,7 +12,10 @@ final class PetController: PetViewDelegate {
     private var drag = DragTracker()
     private var pressing = false
     private var wanted = false
-    private let bubble = BubbleWindow()
+    /// Created the first time the pet shows an emotion.
+    private lazy var bubble = BubbleWindow()
+    private var bubbleCreated = false
+    private var hovering = false
     private var bubbleEmotion: Emotion?
     private var bubbleUntil: CFTimeInterval = 0
     private var flashUntil: CFTimeInterval = 0
@@ -32,18 +35,19 @@ final class PetController: PetViewDelegate {
     func hide() {
         wanted = false
         window.orderOut(nil)
-        bubble.orderOut(nil)
+        if bubbleCreated { bubble.orderOut(nil) }
     }
 
     func close() {
         window.close()
-        bubble.close()
+        if bubbleCreated { bubble.close() }
     }
 
     /// Shows `emotion` in a bubble for a couple of seconds: the emoji now, the portrait once it's loaded.
     func showEmotion(_ emotion: Emotion) {
         bubbleEmotion = emotion
         bubbleUntil = CACurrentMediaTime() + Self.bubbleTime
+        bubbleCreated = true
         bubble.show(image: nil, emoji: emotion.emoji)
     }
 
@@ -69,7 +73,7 @@ final class PetController: PetViewDelegate {
         }
         guard wanted, actor.visible else {
             if window.isVisible { window.orderOut(nil) }
-            if bubble.isVisible { bubble.orderOut(nil) }
+            if bubbleCreated, bubble.isVisible { bubble.orderOut(nil) }
             return
         }
         let now = CACurrentMediaTime()
@@ -82,14 +86,19 @@ final class PetController: PetViewDelegate {
                       flash: CGFloat(max(0, (flashUntil - now) / Self.flashTime)))
         if !window.isVisible { window.orderFrontRegardless() }
         if now < bubbleUntil {
-            bubble.place(tailAt: CGPoint(x: actor.body.position.x, y: window.frame.maxY - 6))
-        } else if bubble.isVisible {
+            bubble.place(tailAt: CGPoint(x: actor.body.position.x, y: window.frame.maxY - 6),
+                         within: window.screen?.visibleFrame)
+        } else if bubbleCreated, bubble.isVisible {
             bubble.orderOut(nil)
         }
-        // Rubbing the cursor over the pet (no button down) strokes it.
-        if interactive, !pressing, NSEvent.pressedMouseButtons == 0, window.hitsSprite(at: cursor) {
+        // Rubbing the cursor over the pet (no button down) strokes it; leaving starts a stroke over.
+        let overPet = interactive && !pressing && NSEvent.pressedMouseButtons == 0 && window.hitsSprite(at: cursor)
+        if overPet {
             model.stroke(pet: id, cursorX: cursor.x)
+        } else if hovering {
+            model.strokeEnded(pet: id)
         }
+        hovering = overPet
         // Clicks pass through to other apps except over the sprite's own pixels.
         window.ignoresMouseEvents = !interactive || (!pressing && !window.hitsSprite(at: cursor))
     }

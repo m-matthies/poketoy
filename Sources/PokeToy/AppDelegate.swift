@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import PokeToyCore
 
 @MainActor
@@ -6,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var menus: MenuBuilder!
     private var statusItem: NSStatusItem?
-    private var feedShortcut: GlobalFeedShortcut?
+    private var feedHotKey: GlobalHotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
@@ -20,9 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         model.start()
 
-        let feedShortcut = GlobalFeedShortcut { [unowned model] in model.feed() }
-        feedShortcut.start()
-        self.feedShortcut = feedShortcut
+        // ⌃⌥B feeds from any app.
+        feedHotKey = GlobalHotKey(keyCode: kVK_ANSI_B, modifiers: controlKey | optionKey) { [unowned model] in model.feed() }
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

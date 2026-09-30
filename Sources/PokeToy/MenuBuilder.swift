@@ -77,9 +77,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(ActionItem("Add Pokémon…", key: "n") { [unowned model] in model.showPicker() })
-        appMenu.addItem(ActionItem("Feed", key: "b", enabled: { [unowned model] in model.canFeed }) {
-            [unowned model] in model.feed()
-        })
+        let feed = ActionItem("Feed", key: "b", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
+        feed.keyEquivalentModifierMask = [.control, .option]
+        appMenu.addItem(feed)
         appMenu.addItem(ActionItem("Play Fetch", key: "j", enabled: { [unowned model] in model.canPlayFetch }) {
             [unowned model] in model.playFetch()
         })

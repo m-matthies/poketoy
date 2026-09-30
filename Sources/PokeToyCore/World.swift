@@ -53,6 +53,8 @@ public struct World: Sendable {
     public let windowOrigins: [Int: CGFloat]
     /// The frontmost window of the frontmost app (pets prefer walking on it), if any.
     public let activeWindowID: Int?
+    /// When this snapshot was taken (seconds, any monotonic clock); nil in tests that don't care.
+    public var timestamp: Double?
 
     public init(screens: [ScreenInfo], surfaces: [Surface], windowOrigins: [Int: CGFloat] = [:],
                 activeWindowID: Int? = nil) {

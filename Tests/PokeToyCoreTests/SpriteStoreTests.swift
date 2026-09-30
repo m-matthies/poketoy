@@ -163,4 +163,29 @@ import Testing
         let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: try portraitRemote([]))
         #expect(await store.portrait(for: "0025", emotion: .sad) == nil)
     }
+
+    @Test func portraitsBackOffAfterANetworkFailure() async {
+        CountingFailingProtocol.requests = 0
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CountingFailingProtocol.self]
+        let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: URL(string: "https://example.invalid/")!,
+                                session: URLSession(configuration: configuration))
+        #expect(await store.portrait(for: "0025", emotion: .happy) == nil)
+        let afterFirst = CountingFailingProtocol.requests
+        #expect(afterFirst >= 1)
+        #expect(await store.portrait(for: "0025", emotion: .sad) == nil)
+        #expect(CountingFailingProtocol.requests == afterFirst)
+    }
+}
+
+/// Fails every request as if offline, counting how many were made.
+final class CountingFailingProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var requests = 0
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.requests += 1
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
 }

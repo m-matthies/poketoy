@@ -99,3 +99,31 @@ import Testing
         }
     }
 }
+
+@Suite struct ReduceMotionMoreTests {
+    @Test func followingIsCalmerWithReduceMotion() {
+        var (playground, ids) = makePlayground([450], world: TestWorld.withShelf)
+        playground.reduceMotion = true
+        var top: CGFloat = 0
+        for _ in 0..<(10 * 60) {
+            play(&playground, seconds: 1.0 / 60, world: TestWorld.withShelf, cursor: CGPoint(x: 450, y: 320), mode: .follow)
+            #expect(playground.pet(ids[0])?.brain.state != .jump)
+            top = max(top, abs(playground.pet(ids[0])?.body.velocity.dx ?? 0))
+        }
+        var (walker, others) = makePlayground([100])
+        walker.reduceMotion = true
+        for _ in 0..<(3 * 60) {
+            play(&walker, seconds: 1.0 / 60, cursor: CGPoint(x: 900, y: 60), mode: .follow)
+            top = max(top, abs(walker.pet(others[0])?.body.velocity.dx ?? 0))
+        }
+        #expect(top <= PetBrain.walkSpeed * 1.4 * 0.7 + 0.01)
+    }
+
+    @Test func scriptedWalksAreCalmerWithReduceMotion() {
+        var (playground, ids) = makePlayground([100])
+        playground.reduceMotion = true
+        playground.pets[0].perform(Script(anim: .walk, moveTo: 900, speed: 100, end: .arrived, priority: 1))
+        play(&playground, seconds: 0.5)
+        #expect(abs(abs(playground.pet(ids[0])?.body.velocity.dx ?? 0) - 70) < 0.01)
+    }
+}

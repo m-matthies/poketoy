@@ -128,4 +128,20 @@ import Testing
         }
         #expect(!events.contains(.emotion(petID: ids[0], .angry)))
     }
+
+    @Test func pressingOrLeavingResetsTheStroke() {
+        var (playground, ids) = makePlayground([510])
+        let right = stride(from: 500, through: 520, by: 4).map { CGFloat($0) }
+        let left = Array(right.reversed())
+        // Two reversals, then the cursor leaves: the next single reversal must not complete a stroke.
+        _ = stroke(&playground, ids[0], right + left + right)
+        playground.strokeEnded(pet: ids[0])
+        #expect(!happy(stroke(&playground, ids[0], left + right), ids[0]))
+
+        var (pressed, others) = makePlayground([510])
+        _ = stroke(&pressed, others[0], right + left + right)
+        pressed.handle(.pressed, pet: others[0])
+        pressed.handle(.released, pet: others[0])
+        #expect(!happy(stroke(&pressed, others[0], left + right), others[0]))
+    }
 }

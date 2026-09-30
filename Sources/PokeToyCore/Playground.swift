@@ -180,6 +180,8 @@ public struct Playground: Sendable {
     public var timeOfDay: TimeOfDay = .day
     /// The system "Reduce motion" setting.
     public var reduceMotion = false
+    /// The user is holding the mouse button (window drags); only then can a window shake pets off.
+    public var mouseDown = false
     var userIdle: Double = 0
     var userAway = false
 
@@ -262,6 +264,7 @@ public struct Playground: Sendable {
 
     public mutating func handle(_ event: PetEvent, pet id: UUID) {
         guard let i = index(of: id), pets[i].visible else { return }
+        if event == .pressed || event == .click || event == .dragBegan { strokes[id] = nil }  // a click is never a stroke
         if pets[i].role == .own, event == .pressed || event == .click,
            let until = annoyedUntil[id], clock < until { return }  // storming off: presses and clicks are ignored
         if event == .click, pets[i].role == .own, noteClick(i) { return }  // this click made it annoyed

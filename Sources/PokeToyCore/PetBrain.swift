@@ -411,14 +411,15 @@ public struct PetBrain: Sendable {
 
     private mutating func runScript(_ script: Script, elapsed: Double, _ ctx: BrainContext, _ body: inout Body) {
         var arrived = true
+        let speed = script.speed * (ctx.reduceMotion ? 0.7 : 1)
         if let target = script.moveTo {
             let dx = target - body.position.x
-            if abs(dx) <= max(2, script.speed * CGFloat(ctx.dt)) {
+            if abs(dx) <= max(2, speed * CGFloat(ctx.dt)) {
                 body.velocity.dx = 0
                 if script.anim == .walk { setPose(.idle, .down) }
             } else {
                 arrived = false
-                body.velocity.dx = dx > 0 ? script.speed : -script.speed
+                body.velocity.dx = dx > 0 ? speed : -speed
                 let facing: Direction = script.anim == .walk ? (dx > 0 ? .right : .left) : script.facing
                 setPose(script.anim, facing, hearts: script.hearts)
             }
@@ -461,14 +462,14 @@ public struct PetBrain: Sendable {
 
         case .follow:
             let c = ctx.cursor
-            if c.y > p.y + 80, let target = bestJump(toward: c, from: p, ctx) {
+            if c.y > p.y + 80, !ctx.reduceMotion, let target = bestJump(toward: c, from: p, ctx) {
                 launch(to: target, x: c.x, halfWidth: ctx.halfWidth, &body)
                 return true
             }
             guard abs(c.x - p.x) > 30 else { return false }
             let dropDown = c.y < p.y - 80 && surface.kind == .window
             let target = dropDown ? c.x : clamp(c.x, on: surface, ctx.halfWidth)
-            let speed = Self.walkSpeed * 1.4 * speedFactor
+            let speed = Self.walkSpeed * 1.4 * speedFactor * (ctx.reduceMotion ? 0.7 : 1)
             state = .walk(targetX: target, speed: speed)
             walk(toward: target, speed: speed, dt: ctx.dt, &body)
             return true
@@ -480,11 +481,11 @@ public struct PetBrain: Sendable {
             let away: CGFloat = ctx.cursor.x > p.x ? -1 : 1
             var target = p.x + away * 200
             if surface.kind == .floor { target = clamp(target, on: surface, ctx.halfWidth) }
-            if abs(target - p.x) < 4, let escape = bestJump(awayFrom: ctx.cursor, from: p, ctx) {
+            if abs(target - p.x) < 4, !ctx.reduceMotion, let escape = bestJump(awayFrom: ctx.cursor, from: p, ctx) {
                 launch(to: escape, x: escape.midX, halfWidth: ctx.halfWidth, &body)
                 return true
             }
-            let speed = Self.walkSpeed * 1.8 * speedFactor
+            let speed = Self.walkSpeed * 1.8 * speedFactor * (ctx.reduceMotion ? 0.7 : 1)
             state = .walk(targetX: target, speed: speed)
             walk(toward: target, speed: speed, dt: ctx.dt, &body)
             return true

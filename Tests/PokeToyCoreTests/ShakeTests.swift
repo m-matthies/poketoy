@@ -14,6 +14,7 @@ import Testing
     /// A pet standing on window 7 (left edge at 300).
     func petOnWindow() -> (Playground, UUID) {
         var playground = Playground(seed: 1, scale: 1)
+        playground.mouseDown = true  // the user is dragging the window
         let id = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450, y: 251))
         play(&playground, seconds: 0.1, world: world(windowAt: 300))
         return (playground, id)
@@ -74,6 +75,7 @@ import Testing
     @Test func petsShakenOffTogetherDoNotKnockEachOtherOver() {
         for gap in [10, 18, 25] as [CGFloat] {
             var playground = Playground(seed: 1, scale: 1)
+            playground.mouseDown = true
             let a = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450, y: 251))
             let b = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450 + gap, y: 251))
             play(&playground, seconds: 0.1, world: world(windowAt: 300))
@@ -82,5 +84,25 @@ import Testing
             #expect(!events.contains(.emotion(petID: a, .pain)) && !events.contains(.emotion(petID: b, .pain)))
             #expect(playground.pet(a)?.body.surfaceID != 7 && playground.pet(b)?.body.surfaceID != 7)
         }
+    }
+
+    @Test func windowsMovedWithoutTheMouseDoNotShake() {
+        var (playground, id) = petOnWindow()
+        playground.mouseDown = false  // e.g. tiling or zoom animations
+        let events = move(&playground, through: [700, 300, 700, 300])
+        #expect(playground.pet(id)?.body.surfaceID == 7)
+        #expect(!events.contains(.emotion(petID: id, .surprised)))
+    }
+
+    @Test func speedIsMeasuredOnTheWallClock() {
+        var (playground, id) = petOnWindow()
+        // The app stalled: the window moved 225 pt over half a second of real time, but only one tick passed.
+        var stalled = world(windowAt: 525)
+        stalled.timestamp = 10.5
+        var before = world(windowAt: 300)
+        before.timestamp = 10.0
+        play(&playground, seconds: 1.0 / 60, world: before)
+        let events = play(&playground, seconds: 1.0 / 60, world: stalled)
+        #expect(!events.contains(.emotion(petID: id, .surprised)))
     }
 }

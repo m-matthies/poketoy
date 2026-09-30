@@ -113,6 +113,10 @@ final class AppModel {
         playground.stroke(pet: id, cursorX: cursorX)
     }
 
+    func strokeEnded(pet id: UUID) {
+        playground.strokeEnded(pet: id)
+    }
+
     // MARK: - Evolution
 
     enum EvolutionStatus {
@@ -200,12 +204,12 @@ final class AppModel {
 
     var canFeed: Bool { !isGameRunning && playground.canDropTreat }
 
-    /// Drops a random treat from a random spot at the top of a screen (one with pets, if any).
+    /// Drops a random treat right next to the mouse pointer; it falls onto whatever is below.
     func feed() {
         guard canFeed else { return }
         let kind: ItemKind = Bool.random() ? .apple : .oranBerry
-        guard let spot = playground.randomFeedingSpot(world: worldMonitor.world) else { return }
-        playground.dropTreat(kind, at: spot)
+        let mouse = NSEvent.mouseLocation
+        playground.dropTreat(kind, at: CGPoint(x: mouse.x + 24, y: mouse.y))
     }
 
     func handle(_ event: ItemEvent, item id: UUID) {
@@ -377,8 +381,11 @@ final class AppModel {
             playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
             playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         }
-        playground.setUserIdle(CGEventSource.secondsSinceLastEventType(.combinedSessionState,
-                                                                       eventType: CGEventType(rawValue: ~0)!))
+        if tickCount % 6 == 1 {  // 10 Hz is plenty for noticing the user
+            playground.setUserIdle(CGEventSource.secondsSinceLastEventType(.combinedSessionState,
+                                                                           eventType: CGEventType(rawValue: ~0)!))
+        }
+        playground.mouseDown = NSEvent.pressedMouseButtons & 1 != 0
         let events = playground.tick(dt: dt, world: worldMonitor.world, cursor: cursor, cursorMode: settings.cursorMode)
         var friendshipsChanged = false
         for event in events {

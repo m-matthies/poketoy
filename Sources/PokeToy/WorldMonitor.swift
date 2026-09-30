@@ -40,7 +40,9 @@ final class WorldMonitor {
             if activeWindowID == nil, pid == frontPID { activeWindowID = number }
             return WindowInfo(id: number, cgBounds: bounds)
         }
-        world = World.build(screens: screens, windows: windows, primaryScreenHeight: primaryHeight,
-                            activeWindowID: activeWindowID)
+        var snapshot = World.build(screens: screens, windows: windows, primaryScreenHeight: primaryHeight,
+                                   activeWindowID: activeWindowID)
+        snapshot.timestamp = CACurrentMediaTime()
+        world = snapshot
     }
 }

@@ -28,9 +28,13 @@ final class BubbleWindow: NSPanel {
         bubbleView.needsDisplay = true
     }
 
-    /// Puts the bubble's tail at `point` (just above the pet).
-    func place(tailAt point: CGPoint) {
-        let origin = NSPoint(x: (point.x - frame.width / 2).rounded(), y: point.y.rounded())
+    /// Puts the bubble's tail at `point` (just above the pet), kept inside `bounds` when given.
+    func place(tailAt point: CGPoint, within bounds: CGRect?) {
+        var origin = NSPoint(x: (point.x - frame.width / 2).rounded(), y: point.y.rounded())
+        if let bounds {
+            origin.x = min(max(origin.x, bounds.minX), bounds.maxX - frame.width)
+            origin.y = min(origin.y, bounds.maxY - frame.height)
+        }
         if frame.origin != origin { setFrameOrigin(origin) }
         if !isVisible { orderFrontRegardless() }
     }

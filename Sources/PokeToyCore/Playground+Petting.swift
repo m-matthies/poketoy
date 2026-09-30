@@ -51,6 +51,11 @@ extension Playground {
         strokes[id] = tracker
     }
 
+    /// The cursor left pet `id`: an unfinished stroke starts over next time.
+    public mutating func strokeEnded(pet id: UUID) {
+        strokes[id] = nil
+    }
+
     /// Records a click on own pet `i`. Returns true if the click is swallowed because the pet is (now) annoyed.
     mutating func noteClick(_ i: Int) -> Bool {
         let id = pets[i].id

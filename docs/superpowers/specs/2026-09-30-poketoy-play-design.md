@@ -367,3 +367,9 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
 - **Passing when absolutely needed:** a pet may walk through another for 1.5 s when (a) it is on
   its way somewhere past the other pet but there is no room to hop and land beyond it, or (b) it
   has been blocked three times within 6 s (stuck going back and forth).
+
+### Feeding shortcut and spot (revised again)
+
+- Feed is **⌃⌥B**, registered as a system-wide Carbon hot key (no Accessibility permission; the
+  combination is reserved for PokeToy). The treat appears right next to the mouse pointer (24 pt to
+  its right) and falls onto whatever is below. Fetch keeps the random spot on a screen with pets.

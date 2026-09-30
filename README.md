@@ -28,10 +28,9 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - Pets never walk through each other: they hop over, turn back, start playing — or squeeze past if there's truly no other
   way. Pets that meet greet each other, play tag or play-fight, and friends sometimes march in a **follow-the-leader**
   line. Pairs that play a lot become **friends** and then **best friends**, who seek each other out and nap side by side.
-- **Feed** (⌘B — works from any app; the app you're in still gets ⌘B too) drops an apple or Oran Berry at a
-  random spot on a screen with pets; the nearest pet runs over to eat it. The system-wide ⌘B needs
-  Accessibility permission: PokeToy asks on first launch (System Settings → Privacy & Security → Accessibility).
-  Treats can be dragged and thrown too; uneaten ones spoil after 90 seconds.
+- **Feed** (⌃⌥B — works from any app, no permissions needed) drops an apple or Oran Berry right next to your mouse
+  pointer; it falls onto whatever is below and the nearest pet runs over to eat it. Treats can be dragged and thrown too;
+  uneaten ones spoil after 90 seconds.
 - **Play Fetch** (⌘J in the app menu) drops a ball: pets race for it and the winner brings it back to below your cursor.
 - **Evolution:** after 15 treats and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
   per possible evolution; evolution data comes from [PokeAPI](https://pokeapi.co)).

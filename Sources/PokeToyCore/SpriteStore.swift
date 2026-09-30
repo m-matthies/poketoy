@@ -22,6 +22,8 @@ public actor SpriteStore {
     private let remoteBase: URL
     private let bundledSprites: URL?
     private let session: URLSession
+    /// After a network failure, portraits come only from the cache for a while.
+    private var portraitsOfflineUntil: Date?
 
     public init(cacheDirectory: URL, remoteBase: URL = SpriteStore.defaultRemoteBase, bundledSprites: URL? = nil,
                 session: URLSession = .shared) {
@@ -121,13 +123,17 @@ public actor SpriteStore {
             if FileManager.default.fileExists(atPath: file.path) { return file }
             let missing = directory.appendingPathComponent(".missing-\(name)")
             if FileManager.default.fileExists(atPath: missing.path) { continue }
+            if let until = portraitsOfflineUntil, Date() < until { continue }  // offline: cache only
             do {
                 let data = try await fetch("portrait/\(path)/\(name).png")
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try data.write(to: file, options: .atomic)
                 return file
             } catch {
-                guard Self.isMissing(error) else { return nil }  // offline: try again another time
+                guard Self.isMissing(error) else {
+                    portraitsOfflineUntil = Date().addingTimeInterval(60)  // offline: try again in a minute
+                    return nil
+                }
                 try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 FileManager.default.createFile(atPath: missing.path, contents: nil)
             }
