@@ -267,6 +267,13 @@ final class AppModel {
         await store.portrait(for: key, names: ["Normal"])
     }
 
+    /// A caught Pokémon's portrait: its own form's if available, else its species'.
+    func portrait(forCatch path: String) async -> URL? {
+        if let url = await store.portrait(for: path, names: ["Normal"]) { return url }
+        guard path.contains("/"), let key = Pokedex.key(forPath: path) else { return nil }
+        return await store.portrait(for: key, names: ["Normal"])
+    }
+
     func endCatchGame() {
         if case .finalScore = gameUI.status { return }  // already over; the results are on their way
         if playground.game != nil {

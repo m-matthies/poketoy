@@ -7,6 +7,8 @@ final class ResultsWindowController: NSWindowController {
     private unowned let model: AppModel
     private let results: CatchResults
     private var checkboxes: [NSButton] = []
+    /// Portrait icons next to the catches, filled in as they load.
+    private var icons: [NSImageView] = []
 
     init(model: AppModel, results: CatchResults, best: Int, isNewBest: Bool, keepable: Int, daily: Bool) {
         self.model = model
@@ -33,7 +35,16 @@ final class ResultsWindowController: NSWindowController {
                 box.state = index < keepable ? .on : .off
                 box.isEnabled = index < keepable
                 checkboxes.append(box)
-                rows.append(box)
+                let icon = NSImageView(image: NSImage(systemSymbolName: "circle.dotted", accessibilityDescription: nil) ?? NSImage())
+                icon.imageScaling = .scaleProportionallyUpOrDown
+                icon.contentTintColor = .tertiaryLabelColor
+                icon.widthAnchor.constraint(equalToConstant: 32).isActive = true
+                icon.heightAnchor.constraint(equalToConstant: 32).isActive = true
+                icons.append(icon)
+                let row = NSStackView(views: [box, icon])
+                row.orientation = .horizontal
+                row.spacing = 6
+                rows.append(row)
             }
             if keepable < results.catches.count {
                 rows.append(NSTextField(labelWithString: "You can keep \(keepable) more (limit \(Playground.maxOwnPets) pets)."))
@@ -64,6 +75,18 @@ final class ResultsWindowController: NSWindowController {
         ])
         window.setContentSize(stack.fittingSize)
         window.center()
+        loadIcons()
+    }
+
+    /// Fetches each catch's portrait (the shiny form's own if SpriteCollab has one, else its species').
+    private func loadIcons() {
+        for (index, record) in results.catches.enumerated() {
+            Task {
+                guard let url = await model.portrait(forCatch: record.path), let image = NSImage(contentsOf: url) else { return }
+                icons[index].image = image
+                icons[index].contentTintColor = nil
+            }
+        }
     }
 
     required init?(coder: NSCoder) {
