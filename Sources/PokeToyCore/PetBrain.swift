@@ -237,6 +237,12 @@ public struct PetBrain: Sendable {
         return true
     }
 
+    /// An idle pet turns to look left or right (e.g. while its window is being moved).
+    public mutating func look(toward dx: CGFloat) {
+        guard case .idle = state, dx != 0 else { return }
+        setPose(pose.anim, dx > 0 ? .right : .left)
+    }
+
     /// Resets the "left alone" timer that leads to sleep.
     public mutating func noteInteraction() {
         sinceInteraction = 0

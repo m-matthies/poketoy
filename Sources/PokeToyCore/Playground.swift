@@ -172,6 +172,7 @@ public struct Playground: Sendable {
     var blockTimes: [UUID: [Double]] = [:]
     /// Pets racing for the fetch ball.
     var fetchRacers: Set<UUID> = []
+    var windowMotion: [Int: WindowMotion] = [:]
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -326,6 +327,7 @@ public struct Playground: Sendable {
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).
     mutating func rulesBeforePhysics(dt: Double, world: World) {
+        shakeRules(world: world)
         gameRulesBeforePhysics(dt: dt, world: world)
         socialRules(dt: dt, world: world)
         feedingRules(world: world)
