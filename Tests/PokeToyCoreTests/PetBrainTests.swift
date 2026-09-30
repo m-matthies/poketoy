@@ -32,6 +32,16 @@ import Testing
         Body(position: CGPoint(x: x, y: surface.y), surfaceID: surface.id)
     }
 
+    /// Runs until the brain falls asleep (at most `seconds`); returns whether it did.
+    func runUntilAsleep(_ brain: inout PetBrain, _ body: inout Body, seconds: Double, _ context: BrainContext) -> Bool {
+        for _ in 0..<Int(seconds * 60) {
+            brain.update(context, body: &body)
+            Physics.step(&body, dt: 1.0 / 60, world: context.world)
+            if brain.state == .sleep { return true }
+        }
+        return false
+    }
+
     @Test func wandersWithinTheFloor() {
         var brain = PetBrain(seed: 1)
         var body = grounded(x: 500, on: floor)
@@ -45,15 +55,6 @@ import Testing
         #expect(walked)
     }
 
-    @Test func fallsAsleepWhenLeftAloneAndWakesOnClick() {
-        var brain = PetBrain(seed: 2)
-        var body = grounded(x: 500, on: floor)
-        run(&brain, &body, seconds: 90, ctx(floorOnly))
-        #expect(brain.state == .sleep)
-        #expect(brain.pose.anim == .sleep)
-        brain.handle(.click, body: &body)
-        #expect(brain.state == .react)
-    }
 
     @Test func clickPlaysReactionWithHeartThenIdles() {
         var brain = PetBrain(seed: 3)
@@ -163,14 +164,6 @@ import Testing
         #expect(brain.state == .jump)
     }
 
-    @Test func switchingCursorModeWakesSleeper() {
-        var brain = PetBrain(seed: 2)
-        var body = grounded(x: 500, on: floor)
-        run(&brain, &body, seconds: 90, ctx(floorOnly))
-        #expect(brain.state == .sleep)
-        brain.update(ctx(floorOnly, mode: .flee), body: &body)
-        #expect(brain.state != .sleep)
-    }
 
     @Test func seededBrainsAreDeterministic() {
         var a = PetBrain(seed: 42), b = PetBrain(seed: 42)
@@ -214,5 +207,22 @@ import Testing
         brain.handle(.pressed, body: &airborne)
         brain.handle(.click, body: &airborne)
         #expect(brain.state == .fall(startY: 400, thrown: false))
+    }
+
+    @Test func fallsAsleepWhenLeftAloneAndWakesOnClick() {
+        var brain = PetBrain(seed: 2)
+        var body = grounded(x: 500, on: floor)
+        #expect(runUntilAsleep(&brain, &body, seconds: 120, ctx(floorOnly)))
+        #expect(brain.pose.anim == .sleep)
+        brain.handle(.click, body: &body)
+        #expect(brain.state == .react)
+    }
+
+    @Test func switchingCursorModeWakesSleeper() {
+        var brain = PetBrain(seed: 2)
+        var body = grounded(x: 500, on: floor)
+        #expect(runUntilAsleep(&brain, &body, seconds: 120, ctx(floorOnly)))
+        brain.update(ctx(floorOnly, mode: .flee), body: &body)
+        #expect(brain.state != .sleep)
     }
 }
