@@ -345,3 +345,11 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
 - When a treat is eaten, other free pets within sight of it that weren't after another treat
   look sad.
 - Feed's shortcut is ⌘B (⌘F is the system Find shortcut).
+
+### Random treat drops and big jumps to the active window (revised)
+
+- Feed drops the treat from a random spot along the top of a random screen that has own pets
+  on it (any screen when there are none), instead of at the cursor.
+- A pet heading for the active window jumps up to it whatever its height, once it is within
+  normal horizontal jump reach (it walks underneath first when further away). Other jumps keep
+  the 320 pt limit.

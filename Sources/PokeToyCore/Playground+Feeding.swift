@@ -8,27 +8,17 @@ extension Playground {
     /// Treats nobody eats disappear after this long, so they can't clog the treat cap.
     public static let treatLifetime = 90.0
 
-    /// Where Feed should drop a treat: above the cursor when a pet on the cursor's screen can see it,
-    /// otherwise above the nearest pet; with no pets, above the cursor.
-    public func feedingSpot(cursor: CGPoint, world: World) -> CGPoint {
-        func screen(containing point: CGPoint) -> ScreenInfo? { world.screens.first { $0.frame.contains(point) } }
-        func top(_ screen: ScreenInfo) -> CGFloat { screen.visibleFrame.maxY - 10 }
-        let cursorScreen = screen(containing: cursor) ?? world.screens.first
+    /// A random spot along the top of a screen for a treat to drop from. Screens with pets on them are
+    /// preferred (so someone can reach it); with no pets, any screen. Nil when there are no screens.
+    public mutating func randomFeedingSpot(world: World) -> CGPoint? {
         let own = pets.filter { $0.role == .own && $0.visible }
-        let nearCursor = own.filter { pet in cursorScreen.map { $0.frame.contains(pet.body.position) } ?? false }
-            .min { abs($0.body.position.x - cursor.x) < abs($1.body.position.x - cursor.x) }
-        if let nearCursor, let cursorScreen, abs(nearCursor.body.position.x - cursor.x) <= Self.treatSightRange {
-            return CGPoint(x: cursor.x, y: top(cursorScreen))
-        }
-        let nearest = nearCursor ?? own.min {
-            hypot($0.body.position.x - cursor.x, $0.body.position.y - cursor.y)
-                < hypot($1.body.position.x - cursor.x, $1.body.position.y - cursor.y)
-        }
-        if let nearest, let petScreen = screen(containing: nearest.body.position) {
-            return CGPoint(x: nearest.body.position.x, y: top(petScreen))
-        }
-        guard let cursorScreen else { return cursor }
-        return CGPoint(x: cursor.x, y: top(cursorScreen))
+        let withPets = world.screens.filter { screen in own.contains { screen.frame.contains($0.body.position) } }
+        let candidates = withPets.isEmpty ? world.screens : withPets
+        guard !candidates.isEmpty else { return nil }
+        let screen = candidates[min(Int(rng.unit() * Double(candidates.count)), candidates.count - 1)]
+        let margin: CGFloat = 40
+        let x = screen.visibleFrame.minX + margin + CGFloat(rng.unit()) * max(0, screen.visibleFrame.width - 2 * margin)
+        return CGPoint(x: x, y: screen.visibleFrame.maxY - 10)
     }
 
     /// Pets and treats are paired closest-first (one pet per treat) and each pet heads for its treat;

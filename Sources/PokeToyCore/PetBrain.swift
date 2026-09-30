@@ -469,14 +469,18 @@ public struct PetBrain: Sendable {
         walk(toward: target, speed: speed, dt: ctx.dt, &body)
     }
 
-    /// Moves toward the active window's top: jumps if it is reachable, walks underneath it if it is above
-    /// but too far, or walks off this window's nearer edge if it is below. Returns false if there is no way.
+    /// Moves toward the active window's top: jumps up to it (at any height) once within horizontal reach,
+    /// walks underneath it if it is too far to the side, or walks off this window's nearer edge if it is below.
+    /// Returns false if there is no way.
     private mutating func headFor(activeWindow active: Int, from surface: Surface, _ ctx: BrainContext,
                                   _ body: inout Body) -> Bool {
         let p = body.position
         let tops = ctx.world.surfaces.filter { $0.id == active && $0.width >= ctx.halfWidth * 2 }
         guard let nearest = tops.min(by: { $0.distance(toX: p.x) < $1.distance(toX: p.x) }) else { return false }
-        if let top = reachable(from: p, ctx).filter({ $0.id == active })
+        // Any height will do for the active window: one big jump once it's within horizontal reach.
+        let upToActive = ctx.world.reachableSurfaces(from: p, maxRise: .greatestFiniteMagnitude,
+                                                     maxReach: Self.maxJumpReach, minWidth: ctx.halfWidth * 2)
+        if let top = upToActive.filter({ $0.id == active })
             .min(by: { $0.distance(toX: p.x) < $1.distance(toX: p.x) }) {
             launch(to: top, x: top.minX + CGFloat(rng.unit()) * top.width, halfWidth: ctx.halfWidth, &body)
             return true

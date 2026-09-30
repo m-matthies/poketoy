@@ -101,11 +101,12 @@ final class AppModel {
 
     var canFeed: Bool { !isGameRunning && playground.canDropTreat }
 
-    /// Drops a random treat from the top of the screen under the cursor.
+    /// Drops a random treat from a random spot at the top of a screen (one with pets, if any).
     func feed() {
         guard canFeed else { return }
         let kind: ItemKind = Bool.random() ? .apple : .oranBerry
-        playground.dropTreat(kind, at: playground.feedingSpot(cursor: NSEvent.mouseLocation, world: worldMonitor.world))
+        guard let spot = playground.randomFeedingSpot(world: worldMonitor.world) else { return }
+        playground.dropTreat(kind, at: spot)
     }
 
     func handle(_ event: ItemEvent, item id: UUID) {

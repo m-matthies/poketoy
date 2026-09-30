@@ -68,4 +68,12 @@ import Testing
         var body = Body(position: CGPoint(x: 450, y: 250), surfaceID: 7)
         #expect(run(&brain, &body, seconds: 180, world: world, until: { $0.surfaceID == -1 }))
     }
+
+    @Test func jumpsUpToAnActiveWindowOfAnyHeight() {
+        let active = Surface(id: 7, minX: 300, maxX: 600, y: 700, kind: .window)  // 650 pt up: beyond a normal jump
+        let world = World(screens: [screen], surfaces: [floor, active], activeWindowID: 7)
+        var brain = PetBrain(seed: 6)
+        var body = Body(position: CGPoint(x: 100, y: 50), surfaceID: -1)
+        #expect(run(&brain, &body, seconds: 60, world: world, until: { $0.surfaceID == 7 }))
+    }
 }

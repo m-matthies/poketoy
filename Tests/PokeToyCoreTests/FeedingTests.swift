@@ -81,26 +81,29 @@ import Testing
         #expect(playground.pet(ids[0])?.body.surfaceID == -1)
     }
 
-    @Test func feedingSpotIsWhereAPetCanReachIt() {
+    @Test func treatsDropAtRandomSpotsOnScreensWithPets() {
         let left = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
                               visibleFrame: CGRect(x: 0, y: 50, width: 1000, height: 725))
         let right = ScreenInfo(frame: CGRect(x: 1000, y: 0, width: 2000, height: 800),
                                visibleFrame: CGRect(x: 1000, y: 0, width: 2000, height: 775))
         let world = World.build(screens: [left, right], windows: [], primaryScreenHeight: 800)
-        var empty = Playground(seed: 1, scale: 1)
-        #expect(empty.feedingSpot(cursor: CGPoint(x: 1500, y: 400), world: world) == CGPoint(x: 1500, y: 765))
-        empty.addPet(metrics: .uniform(), at: CGPoint(x: 300, y: 51))
-        play(&empty, seconds: 0.05, world: world)
-        // Cursor on a screen without pets: drop above the pet instead.
-        #expect(empty.feedingSpot(cursor: CGPoint(x: 1500, y: 400), world: world).x == empty.pets[0].body.position.x)
-        // Cursor near the pet on its screen: drop at the cursor.
-        #expect(empty.feedingSpot(cursor: CGPoint(x: 900, y: 400), world: world) == CGPoint(x: 900, y: 765))
 
-        var wide = Playground(seed: 1, scale: 1)
-        wide.addPet(metrics: .uniform(), at: CGPoint(x: 1100, y: 1))
-        play(&wide, seconds: 0.05, world: world)
-        // Same screen but beyond sight range: drop above the pet.
-        #expect(wide.feedingSpot(cursor: CGPoint(x: 2900, y: 400), world: world).x == wide.pets[0].body.position.x)
+        var empty = Playground(seed: 1, scale: 1)
+        let anywhere = (0..<200).compactMap { _ in empty.randomFeedingSpot(world: world) }
+        #expect(anywhere.contains { $0.x < 1000 } && anywhere.contains { $0.x > 1000 })
+
+        var playground = Playground(seed: 2, scale: 1)
+        playground.addPet(metrics: .uniform(), at: CGPoint(x: 300, y: 51))
+        play(&playground, seconds: 0.05, world: world)
+        let spots = (0..<200).compactMap { _ in playground.randomFeedingSpot(world: world) }
+        #expect(spots.count == 200)
+        let onPetScreen = spots.allSatisfy { (spot: CGPoint) -> Bool in
+            spot.y == 765 && spot.x >= 40 && spot.x <= 960
+        }
+        #expect(onPetScreen)
+        #expect(spots.contains { $0.x < 300 } && spots.contains { $0.x > 700 })
+        var noScreens = Playground(seed: 3)
+        #expect(noScreens.randomFeedingSpot(world: World(screens: [], surfaces: [])) == nil)
     }
 
     @Test func uneatenTreatsSpoil() {
