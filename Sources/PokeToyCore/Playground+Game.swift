@@ -168,7 +168,7 @@ extension Playground {
         for i in items.indices where items[i].state == .flying { items[i].state = .fading(remaining: 0.5) }
         for i in pets.indices where pets[i].role == .wild { pets[i].leaving = true }
         for i in pets.indices where pets[i].role == .own {
-            if (pets[i].brain.script?.priority ?? 0) >= 3 { pets[i].endScript() }
+            if pets[i].brain.script?.priority == 3 { pets[i].endScript() }  // stop sitting; let cheers finish
             pets[i].brain.noteInteraction()  // watching the round counts as company: no nap straight after
         }
         if let game { lastResults = CatchResults(score: game.score, catches: game.catches) }

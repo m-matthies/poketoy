@@ -28,6 +28,8 @@ public struct Item: Identifiable, Sendable {
     public let kind: ItemKind
     public internal(set) var body: Body
     public internal(set) var state: State
+    /// Seconds a treat has been lying around untouched.
+    public internal(set) var age: Double = 0
 
     public init(id: UUID = UUID(), kind: ItemKind, body: Body, state: State = .free) {
         self.id = id

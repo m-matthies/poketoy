@@ -243,4 +243,14 @@ import Testing
         run(&brain, &body, seconds: 1.5, ctx())
         #expect(body.surfaceID == 7)
     }
+
+    @Test func scriptsCannotRunForever() {
+        var brain = PetBrain(seed: 1)
+        var body = grounded(x: 500)
+        brain.perform(Script(anim: .greet, end: .animationFinished, priority: 2), body: &body)
+        run(&brain, &body, seconds: PetBrain.scriptTimeout - 1, ctx())
+        #expect(brain.script != nil)
+        run(&brain, &body, seconds: 2, ctx())
+        #expect(brain.script == nil)
+    }
 }

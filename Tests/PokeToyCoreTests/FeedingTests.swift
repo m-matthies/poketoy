@@ -80,4 +80,49 @@ import Testing
         #expect(playground.treatTargets.isEmpty)
         #expect(playground.pet(ids[0])?.body.surfaceID == -1)
     }
+
+    @Test func feedingSpotIsWhereAPetCanReachIt() {
+        let left = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                              visibleFrame: CGRect(x: 0, y: 50, width: 1000, height: 725))
+        let right = ScreenInfo(frame: CGRect(x: 1000, y: 0, width: 2000, height: 800),
+                               visibleFrame: CGRect(x: 1000, y: 0, width: 2000, height: 775))
+        let world = World.build(screens: [left, right], windows: [], primaryScreenHeight: 800)
+        var empty = Playground(seed: 1, scale: 1)
+        #expect(empty.feedingSpot(cursor: CGPoint(x: 1500, y: 400), world: world) == CGPoint(x: 1500, y: 765))
+        empty.addPet(metrics: .uniform(), at: CGPoint(x: 300, y: 51))
+        play(&empty, seconds: 0.05, world: world)
+        // Cursor on a screen without pets: drop above the pet instead.
+        #expect(empty.feedingSpot(cursor: CGPoint(x: 1500, y: 400), world: world).x == empty.pets[0].body.position.x)
+        // Cursor near the pet on its screen: drop at the cursor.
+        #expect(empty.feedingSpot(cursor: CGPoint(x: 900, y: 400), world: world) == CGPoint(x: 900, y: 765))
+
+        var wide = Playground(seed: 1, scale: 1)
+        wide.addPet(metrics: .uniform(), at: CGPoint(x: 1100, y: 1))
+        play(&wide, seconds: 0.05, world: world)
+        // Same screen but beyond sight range: drop above the pet.
+        #expect(wide.feedingSpot(cursor: CGPoint(x: 2900, y: 400), world: world).x == wide.pets[0].body.position.x)
+    }
+
+    @Test func uneatenTreatsSpoil() {
+        let high = Surface(id: 9, minX: 300, maxX: 600, y: 600, kind: .window)
+        let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, high])
+        var playground = Playground(seed: 1, scale: 1)
+        playground.dropTreat(.apple, at: CGPoint(x: 450, y: 650))
+        play(&playground, seconds: Playground.treatLifetime - 1, world: world)
+        #expect(playground.items.count == 1)
+        play(&playground, seconds: 2, world: world)
+        #expect(playground.items.isEmpty)
+    }
+
+    @Test func handlingATreatKeepsItFresh() {
+        let high = Surface(id: 9, minX: 300, maxX: 600, y: 600, kind: .window)
+        let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, high])
+        var playground = Playground(seed: 1, scale: 1)
+        let treat = playground.dropTreat(.apple, at: CGPoint(x: 450, y: 650))!
+        play(&playground, seconds: Playground.treatLifetime - 5, world: world)
+        playground.handle(.pressed, item: treat)
+        playground.handle(.released, item: treat)
+        play(&playground, seconds: 10, world: world)
+        #expect(playground.items.count == 1)
+    }
 }

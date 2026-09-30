@@ -76,4 +76,13 @@ import Testing
         let data = try AnimData(xml: Data(xml.utf8))
         #expect(SpriteSet.requiredFiles(for: data) == ["Walk-Anim.png", "Idle-Anim.png", "Attack-Anim.png"])
     }
+
+    @Test func idleOnlySpritesStillLoad() throws {
+        let dir = makeTempDirectory()
+        try writeSpriteDirectory(at: dir, anims: [TestAnim(name: "Idle")])
+        let set = try SpriteSet(directory: dir)
+        for kind in PetAnim.allCases {
+            #expect(set.animation(kind).info.name == "Idle")
+        }
+    }
 }

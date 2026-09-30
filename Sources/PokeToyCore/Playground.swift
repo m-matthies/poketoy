@@ -236,6 +236,7 @@ public struct Playground: Sendable {
         case .pressed:
             items[i].state = .held
             items[i].body.velocity = .zero
+            items[i].age = 0
         case .released:
             guard items[i].state == .held else { return }
             items[i].state = .free
@@ -319,6 +320,7 @@ public struct Playground: Sendable {
             default:
                 break
             }
+            if items[i].kind.isTreat, items[i].state == .free, items[i].body.isGrounded { items[i].age += dt }
             let landed = Physics.step(&items[i].body, dt: CGFloat(dt), world: world)
             if landed && items[i].state == .flying {
                 items[i].state = .fading(remaining: 1.5)  // a ball that hit nothing
@@ -326,7 +328,7 @@ public struct Playground: Sendable {
         }
         items.removeAll {
             if case .fading(let remaining) = $0.state { return remaining <= 0 }
-            return false
+            return $0.kind.isTreat && $0.age > Self.treatLifetime  // spoiled
         }
     }
 

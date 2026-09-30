@@ -12,7 +12,7 @@ public enum PetAnim: CaseIterable, Sendable {
         case .land: return ["Hurt", "Idle", "Walk"]
         case .eat: return ["Eat", "Nod", "Idle", "Walk"]
         case .greet: return ["Nod", "Pose", "Hop", "Idle", "Walk"]
-        case .attack: return ["Attack", "Swing", "Hop", "Walk"]
+        case .attack: return ["Attack", "Swing", "Hop", "Idle", "Walk"]
         case .sad: return ["Cringe", "Pain", "Hurt", "Idle", "Walk"]
         case .sit: return ["Sit", "Idle", "Walk"]
         case .cheer: return ["Hop", "Pose", "Idle", "Walk"]

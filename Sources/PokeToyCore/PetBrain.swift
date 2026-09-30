@@ -117,6 +117,8 @@ public struct PetBrain: Sendable {
     public static let hardLandingDrop: CGFloat = 150
     public static let maxJumpRise: CGFloat = 320
     public static let maxJumpReach: CGFloat = 360
+    /// No script that waits for an animation or an arrival runs longer than this.
+    public static let scriptTimeout = 30.0
     /// Chance that a wandering pet heads for the active window instead of a random spot.
     public static let activeWindowPreference = 0.6
 
@@ -369,7 +371,9 @@ public struct PetBrain: Sendable {
         case .after(let seconds): done = elapsed >= seconds
         case .arrived: done = arrived
         }
-        if done { finish(script, &body) } else { state = .scripted(script, elapsed: elapsed) }
+        let overdue: Bool
+        if case .after = script.end { overdue = false } else { overdue = elapsed > Self.scriptTimeout }
+        if done || overdue { finish(script, &body) } else { state = .scripted(script, elapsed: elapsed) }
     }
 
     private mutating func finish(_ script: Script, _ body: inout Body) {

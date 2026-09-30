@@ -140,7 +140,7 @@ extension Playground {
                                                end: .animationFinished, priority: 2))
                         moments[m].stage = 1
                     }
-                } else if interrupted(j) {
+                } else if interrupted(i) || interrupted(j) {
                     abort(i, j)
                     done.append(m)
                 } else if !bBusy {

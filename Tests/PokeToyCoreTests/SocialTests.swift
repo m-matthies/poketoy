@@ -125,4 +125,17 @@ import Testing
         }
         #expect(result.met)
     }
+
+    @Test func draggingTheAttackerDuringTheFlinchGivesNoFriendship() {
+        var (playground, ids) = makePlayground([480, 520])
+        playground.startMoment(0, 1, kind: .playFight)
+        let attacker = playground.moments[0].a
+        let defender = playground.moments[0].b
+        let flinch = playUntil(&playground, seconds: 2) { p, _ in p.pet(defender)?.pose.anim == .sad }
+        #expect(flinch.met)
+        playground.handle(.dragBegan, pet: attacker)
+        play(&playground, seconds: 2)
+        #expect(playground.moments.isEmpty)
+        #expect(playground.friendships.score(ids[0], ids[1]) == 0)
+    }
 }

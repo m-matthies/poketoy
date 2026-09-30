@@ -174,4 +174,16 @@ import Testing
             #expect(playground.pet(ids[0])?.brain.isSleeping == false)
         }
     }
+
+    @Test func catchesAtTheBuzzerStillGetCheers() {
+        var (playground, ids) = started()
+        playground.game!.catchChance = 1
+        let target = untilWildLands(&playground)!
+        playground.throwBall(from: ballAbove(target), velocity: .zero)
+        play(&playground, seconds: 1.0 / 60)
+        playground.endGame()
+        let events = play(&playground, seconds: 1.0 / 60)
+        #expect(events.contains(.caught(petID: target.id)))
+        #expect(playground.pet(ids[0])?.brain.script?.anim == .cheer)
+    }
 }
