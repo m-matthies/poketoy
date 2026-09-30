@@ -55,6 +55,16 @@ public struct PetActor: Identifiable, Sendable {
     }
 
     @discardableResult
+    mutating func petted() -> Bool {
+        brain.petted(body: &body)
+    }
+
+    @discardableResult
+    mutating func interrupt(with script: Script) -> Bool {
+        brain.interrupt(with: script, body: &body)
+    }
+
+    @discardableResult
     mutating func fallAsleep() -> Bool {
         brain.fallAsleep(body: &body)
     }
@@ -148,6 +158,13 @@ public struct Playground: Sendable {
     var events: [PlaygroundEvent] = []
     /// Own pets the user threw hard; they land dizzy.
     var thrownByUser: Set<UUID> = []
+    /// Seconds since the playground started (advanced by `tick`).
+    var clock: Double = 0
+    var lastCursor = CGPoint(x: -10_000, y: -10_000)
+    var lastWorld = World(screens: [], surfaces: [])
+    var strokes: [UUID: StrokeTracker] = [:]
+    var clickTimes: [UUID: [Double]] = [:]
+    var annoyedUntil: [UUID: Double] = [:]
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -203,6 +220,9 @@ public struct Playground: Sendable {
         wildSpecs[id] = nil
         fleeBoost.remove(id)
         thrownByUser.remove(id)
+        strokes[id] = nil
+        clickTimes[id] = nil
+        annoyedUntil[id] = nil
         if wasOwn {
             friendships.remove(id)
             events.append(.friendshipChanged)
@@ -216,6 +236,7 @@ public struct Playground: Sendable {
 
     public mutating func handle(_ event: PetEvent, pet id: UUID) {
         guard let i = index(of: id), pets[i].visible else { return }
+        if event == .click, pets[i].role == .own, noteClick(i) { return }  // annoyed: the click is swallowed
         pets[i].handle(event)
         if case .dragEnded(let velocity) = event, pets[i].role == .own, hypot(velocity.dx, velocity.dy) > 400 {
             thrownByUser.insert(id)
@@ -271,7 +292,9 @@ public struct Playground: Sendable {
     // MARK: - Tick
 
     public mutating func tick(dt: Double, world: World, cursor: CGPoint, cursorMode: CursorMode) -> [PlaygroundEvent] {
-        events = []
+        clock += dt
+        lastCursor = cursor
+        lastWorld = world
         Self.decay(&pairCooldowns, dt)
         Self.decay(&knockCooldowns, dt)
         for i in pets.indices where pets[i].visible {
@@ -286,7 +309,10 @@ public struct Playground: Sendable {
         rulesAfterPhysics(dt: dt, world: world)
         for i in pets.indices { advanceAnimation(i, dt: dt) }
         recover(world: world)
-        return events
+        // Events raised between ticks (clicks, strokes…) are delivered with this tick's.
+        let delivered = events
+        events = []
+        return delivered
     }
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).

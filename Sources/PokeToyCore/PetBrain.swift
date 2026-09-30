@@ -217,6 +217,26 @@ public struct PetBrain: Sendable {
         state = .scripted(script, elapsed: elapsed)
     }
 
+    /// The user stroked the pet: a sleeping pet sleeps on (a little longer) with hearts; an awake one beams.
+    @discardableResult
+    public mutating func petted(body: inout Body) -> Bool {
+        sinceInteraction = 0
+        if state == .sleep {
+            napRemaining = max(napRemaining, 30)
+            setPose(.sleep, .down, hearts: 2)
+            return true
+        }
+        return perform(Script(anim: .greet, hearts: 2, end: .after(1.5), priority: 2), body: &body)
+    }
+
+    /// Starts `script` whatever the pet is doing (except while held or dragged, or in the air).
+    @discardableResult
+    public mutating func interrupt(with script: Script, body: inout Body) -> Bool {
+        guard body.isGrounded, state != .dragged, state != .held else { return false }
+        start(script, &body)
+        return true
+    }
+
     /// Resets the "left alone" timer that leads to sleep.
     public mutating func noteInteraction() {
         sinceInteraction = 0
