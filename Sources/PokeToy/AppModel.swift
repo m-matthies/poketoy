@@ -373,6 +373,15 @@ final class AppModel {
         updateTimer(for: id) { $0?.adjust(by: Double(minutes * 60), at: Date()) }
     }
 
+    /// Keeps a pet still (its menu or task editor is open) until `letGoPet`.
+    func holdPet(_ id: UUID) {
+        playground.hold(id)
+    }
+
+    func letGoPet(_ id: UUID) {
+        playground.letGo(id)
+    }
+
     /// PokeToy is quitting: keeps a task still being typed and notes the time, so timers pause while it's closed.
     func prepareToQuit() {
         for view in petViews.values { view.commitTaskEdit() }

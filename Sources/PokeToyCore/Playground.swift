@@ -178,6 +178,8 @@ public struct Playground: Sendable {
     var fetchRacers: Set<UUID> = []
     /// Pets trying to get the user's attention.
     var attention: [UUID: AttentionSeeker] = [:]
+    /// Pets held still (their menu or task editor is open).
+    var held: Set<UUID> = []
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
     var wildShiny: Set<UUID> = []
@@ -274,6 +276,7 @@ public struct Playground: Sendable {
         blockTimes[id] = nil
         attention[id] = nil
         fetchRacers.remove(id)
+        held.remove(id)
         if wasOwn && !keepFriendships {
             friendships.remove(id)
             events.append(.friendshipChanged)
@@ -398,6 +401,7 @@ public struct Playground: Sendable {
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).
     mutating func rulesBeforePhysics(dt: Double, world: World) {
+        holdRules()
         awayRules()
         shakeRules(world: world)
         gameRulesBeforePhysics(dt: dt, world: world)

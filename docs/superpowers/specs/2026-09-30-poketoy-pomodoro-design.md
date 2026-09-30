@@ -93,3 +93,11 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
   pause instead: `Settings.lastAlive` is noted on quit and every 30 s while a timer exists (covering crashes and power
   loss), and at launch `Pomodoro.resumed` gives running timers the time they had left then.
 - A task still being typed in the editor above a pet is saved when PokeToy quits.
+
+## Holding still (added)
+
+- `Playground.hold(_:)` / `letGo(_:)`: a held pet stands still, facing the way it faced, under a script of priority 9
+  (above every behaviour: treats, fetch, social moments, cursor following, attention seeking, the catch game). A
+  sleeping pet sleeps on; a pet in mid-air holds once it lands.
+- A pet is held from the right-click until its menu closes, and while its task editor is open (from either menu),
+  so it can't wander off while its timer or task is being set.

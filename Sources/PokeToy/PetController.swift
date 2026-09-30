@@ -144,7 +144,15 @@ final class PetController: PetViewDelegate {
     func petViewContextMenu(_ event: NSEvent) {
         guard interactive, let menu = MenuBuilder(model: model).makePetMenu(for: id) else { return }
         model.noticed(pet: id)
+        model.holdPet(id)  // it stays put while its menu is open
         NSMenu.popUpContextMenu(menu, with: event, for: window.petView)
+        // The chosen item may have opened the task editor, which keeps holding the pet until it's done.
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.taskEditor?.isEditing != true else { return }
+                self.model.letGoPet(self.id)
+            }
+        }
     }
 
     /// What the pet looks like right now, and where (for the Poké Ball animation).
@@ -163,9 +171,12 @@ final class PetController: PetViewDelegate {
         taskEditor = editor
         let anchor = badge?.isVisible == true ? badge!.frame : window.frame
         let state = model.taskEditorState(for: id)
+        model.holdPet(id)  // stays right under its editor
         editor.edit(text: state.task, minutes: state.minutes, unit: state.unit, hint: state.hint, above: anchor,
                     within: window.screen?.visibleFrame) { [weak self] result in
-            guard let self, let (name, minutes) = result else { return }
+            guard let self else { return }
+            self.model.letGoPet(self.id)
+            guard let (name, minutes) = result else { return }
             self.model.saveTask(name, minutes: minutes, on: self.id)
         }
     }

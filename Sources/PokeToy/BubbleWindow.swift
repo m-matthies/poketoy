@@ -142,6 +142,8 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
     private var timeRow: NSStackView!
     private var onDone: ((String, Int?)?) -> Void = { _ in }
     private var editing = false
+    /// The editor is open.
+    var isEditing: Bool { editing }
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 340, height: 60),
