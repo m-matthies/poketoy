@@ -67,3 +67,49 @@ func makeTempDirectory() -> URL {
     try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
+
+// MARK: - Playground helpers
+
+enum TestWorld {
+    static let screen = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                                   visibleFrame: CGRect(x: 0, y: 50, width: 1000, height: 725))
+    static let floor = Surface(id: -1, minX: 0, maxX: 1000, y: 50, kind: .floor)
+    static let shelf = Surface(id: 7, minX: 300, maxX: 600, y: 250, kind: .window)
+    static let floorOnly = World(screens: [screen], surfaces: [floor])
+    static let withShelf = World(screens: [screen], surfaces: [floor, shelf])
+}
+
+let farAway = CGPoint(x: -5000, y: -5000)
+
+/// Ticks the playground for `seconds` at 60 Hz and returns every event.
+@discardableResult
+func play(_ playground: inout Playground, seconds: Double, world: World = TestWorld.floorOnly,
+          cursor: CGPoint = farAway, mode: CursorMode = .off) -> [PlaygroundEvent] {
+    var events: [PlaygroundEvent] = []
+    for _ in 0..<Int((seconds * 60).rounded()) {
+        events += playground.tick(dt: 1.0 / 60, world: world, cursor: cursor, cursorMode: mode)
+    }
+    return events
+}
+
+/// Ticks until `condition` holds (checked after every tick, at most `seconds`).
+@discardableResult
+func playUntil(_ playground: inout Playground, seconds: Double, world: World = TestWorld.floorOnly,
+               cursor: CGPoint = farAway, mode: CursorMode = .off,
+               _ condition: (Playground, [PlaygroundEvent]) -> Bool) -> (met: Bool, events: [PlaygroundEvent]) {
+    var events: [PlaygroundEvent] = []
+    for _ in 0..<Int((seconds * 60).rounded()) {
+        events += playground.tick(dt: 1.0 / 60, world: world, cursor: cursor, cursorMode: mode)
+        if condition(playground, events) { return (true, events) }
+    }
+    return (false, events)
+}
+
+/// A playground with one own pet standing on the floor at each x.
+func makePlayground(_ xs: [CGFloat], seed: UInt64 = 1, scale: CGFloat = 1,
+                    world: World = TestWorld.floorOnly) -> (Playground, [UUID]) {
+    var playground = Playground(seed: seed, scale: scale)
+    let ids = xs.map { playground.addPet(metrics: .uniform(), at: CGPoint(x: $0, y: TestWorld.floor.y + 1)) }
+    play(&playground, seconds: 0.05, world: world)
+    return (playground, ids)
+}
