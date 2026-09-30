@@ -46,7 +46,7 @@ Panel configuration: `level = .statusBar` (above normal and floating windows),
 .ignoresCycle]`, `hasShadow = false`, `isOpaque = false`,
 `backgroundColor = .clear`, `hidesOnDeactivate = false`.
 
-A single 60 Hz tick (`CADisplayLink` from `NSScreen`, falling back to `Timer`)
+A single 60 Hz `Timer` (common run-loop mode, so it keeps running during menu tracking)
 drives every pet: update brain → update physics → advance animation → move
 panel and redraw.
 
@@ -73,7 +73,7 @@ panel and redraw.
   `(minX, maxX, y)` in a single global coordinate space (AppKit, bottom-left
   origin). `World` is built from: each screen's visible-frame bottom (above the
   Dock), each screen's bottom edge, and the top edges of on-screen windows
-  (from `CGWindowListCopyWindowInfo`, layer 0 only, excluding our own
+  (from `CGWindowListCopyWindowInfo` refreshed ~5 Hz, layer 0 only, excluding our own
   windows, converted from CG top-left to AppKit coordinates, clipped by
   windows in front of them). Queries: `surfaceBelow(point)`,
   `surfaceUnder(point, tolerance)`, `reachableSurfaces(from:, maxJump:)`.
@@ -114,7 +114,7 @@ panel and redraw.
   frame with nearest-neighbor scaling, handles mouse down/drag/up (drag moves
   the panel; a press without movement counts as a click), and does alpha
   hit-testing for click-through.
-- **`WorldMonitor`** — refreshes `World` from the window list ~2 Hz and on
+- **`WorldMonitor`** — refreshes `World` from the window list ~5 Hz and on
   screen-configuration changes.
 - **`MenuBarController`** — status item menu:
   - Show Pets / Hide Pets
