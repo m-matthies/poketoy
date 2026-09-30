@@ -20,12 +20,14 @@ public struct CatchRecord: Equatable, Sendable {
     public let displayName: String
     /// Where the ball was when the Pokémon was caught; kept Pokémon appear here.
     public let position: CGPoint
+    public let isShiny: Bool
 
-    public init(petID: UUID, path: String, displayName: String, position: CGPoint) {
+    public init(petID: UUID, path: String, displayName: String, position: CGPoint, isShiny: Bool = false) {
         self.petID = petID
         self.path = path
         self.displayName = displayName
         self.position = position
+        self.isShiny = isShiny
     }
 }
 

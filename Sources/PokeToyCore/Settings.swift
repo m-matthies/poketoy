@@ -43,23 +43,30 @@ public struct Settings: Codable, Equatable, Sendable {
     /// `Friendships.points`, keyed `"<uuidA>+<uuidB>"`.
     public var friendships: [String: Int]
     public var bestCatchScore: Int
+    /// Caught species by base form path (`0025`).
+    public var pokedex: [String: PokedexEntry]
+    /// Best daily-challenge score by day (`yyyy-MM-dd`).
+    public var dailyBest: [String: Int]
 
     public static let defaultPet = PetRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000025")!,
                                              spritePath: "0025", displayName: "Pikachu")
     public static let `default` = Settings(pets: [defaultPet], hidden: false, cursorMode: .off, scale: 2)
 
     public init(pets: [PetRecord], hidden: Bool, cursorMode: CursorMode, scale: Int,
-                friendships: [String: Int] = [:], bestCatchScore: Int = 0) {
+                friendships: [String: Int] = [:], bestCatchScore: Int = 0,
+                pokedex: [String: PokedexEntry] = [:], dailyBest: [String: Int] = [:]) {
         self.pets = pets
         self.hidden = hidden
         self.cursorMode = cursorMode
         self.scale = scale
         self.friendships = friendships
         self.bestCatchScore = bestCatchScore
+        self.pokedex = pokedex
+        self.dailyBest = dailyBest
     }
 
     private enum CodingKeys: String, CodingKey {
-        case pets, hidden, cursorMode, scale, friendships, bestCatchScore
+        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, dailyBest
     }
 
     public init(from decoder: Decoder) throws {
@@ -70,6 +77,8 @@ public struct Settings: Codable, Equatable, Sendable {
         scale = min(max(try container.decodeIfPresent(Int.self, forKey: .scale) ?? 2, 1), 3)
         friendships = (try? container.decodeIfPresent([String: Int].self, forKey: .friendships)) ?? [:]
         bestCatchScore = (try? container.decodeIfPresent(Int.self, forKey: .bestCatchScore)) ?? 0
+        pokedex = (try? container.decodeIfPresent([String: PokedexEntry].self, forKey: .pokedex)) ?? [:]
+        dailyBest = (try? container.decodeIfPresent([String: Int].self, forKey: .dailyBest)) ?? [:]
     }
 
     public static func load(from defaults: UserDefaults, key: String = "settings") -> Settings {

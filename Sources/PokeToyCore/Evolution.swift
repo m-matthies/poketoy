@@ -109,6 +109,12 @@ public actor EvolutionStore {
         return Evolution.nextForms(in: chain, after: dex)
     }
 
+    /// A Pokémon's types (e.g. ["normal", "flying"]).
+    public func types(of dex: Int) async throws -> [String] {
+        let raw = try JSONDecoder().decode(RawPokemon.self, from: try await document("pokemon/\(dex)"))
+        return raw.types.sorted { $0.slot < $1.slot }.map(\.type.name)
+    }
+
     /// A PokeAPI document, from the cache when present.
     private func document(_ path: String) async throws -> Data {
         let cached = cacheDirectory.appendingPathComponent(path.replacingOccurrences(of: "/", with: "-") + ".json")
@@ -120,6 +126,15 @@ public actor EvolutionStore {
         try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         try data.write(to: cached, options: .atomic)
         return data
+    }
+
+    private struct RawPokemon: Decodable {
+        struct Slot: Decodable {
+            struct Named: Decodable { let name: String }
+            let slot: Int
+            let type: Named
+        }
+        let types: [Slot]
     }
 
     private struct RawSpecies: Decodable {
