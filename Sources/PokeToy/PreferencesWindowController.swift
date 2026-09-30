@@ -26,7 +26,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     private static let napTitles: [(NapTiming, String)] = [
         (.often, "Often (after 30 s alone)"), (.normal, "Normal (after 1 min)"), (.rarely, "Rarely (after 3 min)"),
-        (.never, "Never on their own"),
+        (.never, "Never (only while you're away)"),
     ]
     private static let screenTitles: [(ScreenChoice, String)] = [(.all, "All screens"), (.main, "Main screen only")]
 
@@ -38,13 +38,20 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         window.isReleasedWhenClosed = false
         super.init(window: window)
         build(in: window)
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) {
-            [weak self] _ in MainActor.assumeIsolated { self?.stopRecording() }
+        // Recording stops as soon as the window closes or loses focus, so shortcuts are never left switched off.
+        for name in [NSWindow.willCloseNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.stopRecording() }
+            }
         }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    func refreshIfVisible() {
+        if window?.isVisible == true { refresh() }
     }
 
     func show() {
@@ -168,7 +175,9 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         for action in ShortcutAction.allCases {
             shortcutButtons[action]?.title = recording == action ? "Type a shortcut…"
                 : model.shortcut(for: action)?.display ?? "Record Shortcut"
-            shortcutNotes[action]?.stringValue = model.unavailableShortcuts.contains(action) ? "In use by another app" : ""
+            shortcutNotes[action]?.stringValue = recording == action ? "Use ⌃ or ⌥ · Esc cancels"
+                : model.unavailableShortcuts.contains(action) ? "In use by another app" : ""
+            shortcutNotes[action]?.textColor = recording == action ? .secondaryLabelColor : .systemRed
         }
         fullScreen.state = prefs.hideInFullScreen ? .on : .off
         appsTable.reloadData()
@@ -182,7 +191,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     @objc private func speedChanged() {
         let value = (speed.doubleValue * 10).rounded() / 10
-        model.updatePreferences { $0.petSpeed = value }
+        // While dragging, only the speed changes; letting go saves.
+        let released = NSApp.currentEvent?.type == .leftMouseUp
+        guard value != prefs.petSpeed || released else { return }
+        model.updatePreferences(save: released) { $0.petSpeed = value }
         speedLabel.stringValue = String(format: "%.1f×", value)
     }
 
@@ -211,6 +223,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             try model.setLaunchAtLogin(loginItem.state == .on)
         } catch {
             NSSound.beep()
+            loginItem.state = model.launchesAtLogin || model.launchAtLoginNeedsApproval ? .on : .off
             loginNote.stringValue = "Couldn't change it: \(error.localizedDescription)"
             return
         }
@@ -227,16 +240,23 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         // Global shortcuts would fire instead of being recorded: let them go while recording.
         model.suspendShortcuts()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated { self?.record(event) }
-            return nil
+            let used = MainActor.assumeIsolated { self?.record(event) ?? false }
+            return used ? nil : event
         }
     }
 
-    private func record(_ event: NSEvent) {
-        guard let action = recording else { return }
-        if event.keyCode == UInt16(kVK_Escape) && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+    /// Handles a key press while recording: true when it was used, false to pass it on.
+    private func record(_ event: NSEvent) -> Bool {
+        // Only keys typed into this window are recorded; other PokeToy windows keep working.
+        guard let action = recording, event.window === window else { return false }
+        let held = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.keyCode == UInt16(kVK_Escape) && held.isEmpty {
             stopRecording()  // Esc cancels
-            return
+            return true
+        }
+        if held.contains(.command) && held.isDisjoint(with: [.control, .option]) {
+            stopRecording()  // ⌘W, ⌘Q, … mean what they always do
+            return false
         }
         let flags = event.modifierFlags
         var modifiers = 0
@@ -246,8 +266,8 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         if flags.contains(.shift) { modifiers |= shiftKey }
         let shortcut = Shortcut(keyCode: UInt32(event.keyCode), modifiers: UInt32(modifiers))
         guard shortcut.isValid else {
-            NSSound.beep()  // needs ⌘, ⌃ or ⌥
-            return
+            NSSound.beep()  // needs ⌃ or ⌥
+            return true
         }
         recording = nil
         removeMonitor()
@@ -255,8 +275,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         for other in ShortcutAction.allCases where other != action && model.shortcut(for: other) == shortcut {
             model.setShortcut(nil, for: other)
         }
-        model.setShortcut(shortcut, for: action)  // re-registers every shortcut
+        model.setShortcut(shortcut, for: action)
+        model.resumeShortcuts()
         refresh()
+        return true
     }
 
     @objc private func clearShortcut(_ sender: NSButton) {

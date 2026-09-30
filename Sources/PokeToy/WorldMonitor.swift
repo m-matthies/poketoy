@@ -59,7 +59,7 @@ final class WorldMonitor {
             guard (info[kCGWindowOwnerPID as String] as? Int32) == frontPID, (info[kCGWindowLayer as String] as? Int) == 0,
                   let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDictionary) else { return false }
-            return AutoHide.coversAScreen(bounds, screens: cgScreens)
+            return AutoHide.coversAScreen(bounds, screens: cgScreens, topInsets: allScreens.map(\.safeAreaInsets.top))
         }
         var activeWindowID: Int?
         let windows: [WindowInfo] = list.compactMap { info in

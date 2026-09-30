@@ -43,9 +43,10 @@ public struct Shortcut: Codable, Equatable, Hashable, Sendable {
         self.modifiers = modifiers
     }
 
-    /// Needs ⌘, ⌃ or ⌥ (so plain typing is never swallowed) and a real key, not a modifier on its own.
+    /// Needs ⌃ or ⌥ — plain typing and ⌘ combinations (⌘W, ⌘Q, ⌘C…) belong to apps — and a real key,
+    /// not a modifier on its own.
     public var isValid: Bool {
-        modifiers & UInt32(cmdKey | controlKey | optionKey) != 0 && !Self.modifierKeys.contains(Int(keyCode))
+        modifiers & UInt32(controlKey | optionKey) != 0 && !Self.modifierKeys.contains(Int(keyCode))
     }
 
     /// As menus show it: "⌃⌥⇧⌘B".
@@ -170,12 +171,43 @@ public enum AutoHide {
         return isFullScreen && preferences.hideInFullScreen
     }
 
-    /// A window exactly covering one of the screens (CG window bounds and screen frames in the same coordinates).
-    public static func coversAScreen(_ bounds: CGRect, screens: [CGRect]) -> Bool {
-        screens.contains { screen in
-            abs(bounds.minX - screen.minX) <= 1 && abs(bounds.minY - screen.minY) <= 1
-                && abs(bounds.width - screen.width) <= 1 && abs(bounds.height - screen.height) <= 1
+    /// A window exactly covering one of the screens (CG window bounds and screen frames in the same coordinates,
+    /// origin top left). On screens with a camera notch, full-screen windows start below it: `topInsets[i]` is
+    /// screen i's safe-area top inset.
+    public static func coversAScreen(_ bounds: CGRect, screens: [CGRect], topInsets: [CGFloat] = []) -> Bool {
+        for (index, screen) in screens.enumerated() {
+            let inset: CGFloat = index < topInsets.count ? topInsets[index] : 0
+            var belowNotch = screen
+            belowNotch.origin.y += inset
+            belowNotch.size.height -= inset
+            if matches(bounds, screen) || matches(bounds, belowNotch) { return true }
         }
+        return false
+    }
+
+    private static func matches(_ a: CGRect, _ b: CGRect) -> Bool {
+        let edges: [CGFloat] = [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height]
+        return edges.allSatisfy { abs($0) <= 1 }
+    }
+}
+
+/// Auto-hide over time: the rules, plus the player's "show them anyway" for the app in front.
+public struct AutoHideState: Sendable {
+    /// The app in front when the player asked to see the pets despite auto-hide.
+    private var shownAnywayFor: String?
+
+    public init() {}
+
+    /// Whether pets should be auto-hidden now.
+    public mutating func update(frontmost: String?, isFullScreen: Bool, preferences: Preferences, gameRunning: Bool) -> Bool {
+        if let shown = shownAnywayFor, shown != frontmost { shownAnywayFor = nil }  // a new app in front: rules again
+        guard !gameRunning, shownAnywayFor == nil else { return false }
+        return AutoHide.shouldHide(frontmost: frontmost, isFullScreen: isFullScreen, preferences: preferences)
+    }
+
+    /// The player showed the pets while `frontmost` was hiding them: leave them visible until another app is in front.
+    public mutating func userShowed(frontmost: String?) {
+        shownAnywayFor = frontmost
     }
 }
 

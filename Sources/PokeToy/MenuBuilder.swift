@@ -43,12 +43,29 @@ extension Shortcut {
         if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
         return flags
     }
+
+    /// The key equivalent menus use for this key — also for Space, arrows, F-keys and the like.
+    var menuKey: String? {
+        if let key = keyEquivalent { return key }
+        let special: [Int: Int] = [
+            kVK_LeftArrow: NSLeftArrowFunctionKey, kVK_RightArrow: NSRightArrowFunctionKey,
+            kVK_UpArrow: NSUpArrowFunctionKey, kVK_DownArrow: NSDownArrowFunctionKey,
+            kVK_Home: NSHomeFunctionKey, kVK_End: NSEndFunctionKey, kVK_PageUp: NSPageUpFunctionKey,
+            kVK_PageDown: NSPageDownFunctionKey, kVK_ForwardDelete: NSDeleteFunctionKey,
+            kVK_Space: 0x20, kVK_Return: 0x0D, kVK_Tab: 0x09, kVK_Delete: 0x08, kVK_Escape: 0x1B,
+        ]
+        let functionKeys = [kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10,
+                            kVK_F11, kVK_F12, kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F18, kVK_F19, kVK_F20]
+        let code = Int(keyCode)
+        let scalar = special[code] ?? functionKeys.firstIndex(of: code).map { NSF1FunctionKey + $0 }
+        return scalar.flatMap(UnicodeScalar.init).map { String(Character($0)) }
+    }
 }
 
 extension NSMenuItem {
     /// Shows a global shortcut next to the item (it works from any app).
     func show(_ shortcut: Shortcut?) {
-        guard let shortcut, let key = shortcut.keyEquivalent else {
+        guard let shortcut, let key = shortcut.menuKey else {
             keyEquivalent = ""
             return
         }
@@ -79,19 +96,13 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
     func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
-        populate(menu, includeQuit: true)
-        return menu
-    }
-
-    func makeDockMenu() -> NSMenu {
-        let menu = NSMenu()
-        populate(menu, includeQuit: false)  // the Dock adds its own Quit
+        populate(menu)
         return menu
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         model.refreshEvolutionOptions()
-        populate(menu, includeQuit: true)
+        populate(menu)
     }
 
     func makeMainMenu() -> NSMenu {
@@ -119,7 +130,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(game)
         appMenu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
         appMenu.addItem(ActionItem("Pets…") { [unowned model] in model.showPets() })
-        let showHide = ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) }
+        let showHide = ActionItem("Show/Hide Pets") { [unowned model] in model.toggleHidden() }
         showHide.show(model.shortcut(for: .showHide))
         appMenu.addItem(showHide)
         appMenu.addItem(.separator())
@@ -132,7 +143,12 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(withTitle: "Quit PokeToy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         addSubmenu(appMenu, to: main)
 
+        // Menu-bar-only apps don't show this menu, but its key equivalents still work in text fields.
         let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
         edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
@@ -145,10 +161,10 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         return main
     }
 
-    private func populate(_ menu: NSMenu, includeQuit: Bool) {
+    /// The paw menu — with no Dock icon and no visible app menu, everything is reachable from here.
+    private func populate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let hidden = model.settings.hidden
-        let showHide = ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) }
+        let showHide = ActionItem(model.petsHidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.toggleHidden() }
         showHide.show(model.shortcut(for: .showHide))
         menu.addItem(showHide)
         if model.needsStarter {
@@ -197,7 +213,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                 case .none:
                     break
                 }
-                submenu.addItem(ActionItem("Release") { [unowned model] in model.removePet(pet.id) })
+                submenu.addItem(ActionItem("Release…") { [unowned model] in model.confirmRelease(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)
             }
@@ -227,10 +243,12 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             [unowned model] in model.confirmReset()
         })
 
-        if includeQuit {
-            menu.addItem(.separator())
-            menu.addItem(ActionItem("Quit PokeToy") { NSApp.terminate(nil) })
-        }
+        menu.addItem(.separator())
+        menu.addItem(ActionItem("About PokeToy") {
+            NSApp.activate()
+            NSApp.orderFrontStandardAboutPanel(nil)
+        })
+        menu.addItem(ActionItem("Quit PokeToy") { NSApp.terminate(nil) })
     }
 
     private func addSubmenu(_ submenu: NSMenu, titled title: String? = nil, to menu: NSMenu) {
