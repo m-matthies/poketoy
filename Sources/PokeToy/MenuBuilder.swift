@@ -65,6 +65,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        model.refreshEvolutionOptions()
         populate(menu, includeQuit: true)
     }
 
@@ -78,6 +79,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(ActionItem("Add Pokémon…", key: "n") { [unowned model] in model.showPicker() })
         appMenu.addItem(ActionItem("Feed", key: "b", enabled: { [unowned model] in model.canFeed }) {
             [unowned model] in model.feed()
+        })
+        appMenu.addItem(ActionItem("Play Fetch", key: "j", enabled: { [unowned model] in model.canPlayFetch }) {
+            [unowned model] in model.playFetch()
         })
         appMenu.addItem(ActionItem("Start Catch Game", key: "g", dynamicTitle: { [unowned model] in
             model.isGameRunning ? "End Catch Game" : "Start Catch Game"
@@ -108,6 +112,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         menu.addItem(ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) })
         menu.addItem(ActionItem("Add Pokémon…") { [unowned model] in model.showPicker() })
         menu.addItem(ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() })
+        menu.addItem(ActionItem("Play Fetch", enabled: { [unowned model] in model.canPlayFetch }) {
+            [unowned model] in model.playFetch()
+        })
         if model.isGameRunning {
             menu.addItem(ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() })
         } else {
@@ -126,6 +133,23 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                 if let friend = model.bestFriendName(of: pet.id) {
                     submenu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
                     submenu.addItem(.separator())
+                }
+                switch model.evolutionStatus(of: pet.id) {
+                case .ready(let options):
+                    for option in options {
+                        submenu.addItem(ActionItem("Evolve into \(option.displayName)") { [unowned model] in
+                            model.evolve(pet.id, into: option)
+                        })
+                    }
+                    submenu.addItem(.separator())
+                case .notReady(let treatsLeft, let needsBestFriend):
+                    let treats = treatsLeft == 1 ? "1 more treat" : "\(treatsLeft) more treats"
+                    let text = treatsLeft == 0 ? "Evolves once it has a best friend"
+                        : "Evolves after \(treats)" + (needsBestFriend ? " and a best friend" : "")
+                    submenu.addItem(NSMenuItem(title: text, action: nil, keyEquivalent: ""))
+                    submenu.addItem(.separator())
+                case .none:
+                    break
                 }
                 submenu.addItem(ActionItem("Remove") { [unowned model] in model.removePet(pet.id) })
                 item.submenu = submenu

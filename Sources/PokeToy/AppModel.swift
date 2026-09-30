@@ -24,6 +24,10 @@ final class AppModel {
     private(set) var settings: Settings
     private(set) var playground: Playground
     private let store: SpriteStore
+    private let evolutionStore: EvolutionStore
+    /// What each pet can evolve into (empty: final form); missing until PokeAPI answered.
+    private var evolutionOptions: [UUID: [CatalogEntry]] = [:]
+    private var tickCount = 0
     private let worldMonitor = WorldMonitor()
     private var petViews: [UUID: PetController] = [:]
     private var itemViews: [UUID: ItemController] = [:]
@@ -44,6 +48,7 @@ final class AppModel {
             .appendingPathComponent("PokeToy", isDirectory: true)
         store = SpriteStore(cacheDirectory: caches,
                             bundledSprites: Bundle.main.resourceURL?.appendingPathComponent("Sprites", isDirectory: true))
+        evolutionStore = EvolutionStore(cacheDirectory: caches.appendingPathComponent("pokeapi", isDirectory: true))
     }
 
     func start() {
@@ -62,6 +67,7 @@ final class AppModel {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        refreshEvolutionOptions()
     }
 
     // MARK: - Pets
@@ -75,6 +81,7 @@ final class AppModel {
         if settings.hidden { setHidden(false) }
         attach(record, sprites: sprites)
         save()
+        refreshEvolutionOptions()
     }
 
     func removePet(_ id: UUID) {
@@ -95,6 +102,68 @@ final class AppModel {
 
     func movePet(_ id: UUID, to point: CGPoint) {
         playground.movePet(id, to: point)
+    }
+
+    func stroke(pet id: UUID, cursorX: CGFloat) {
+        playground.stroke(pet: id, cursorX: cursorX)
+    }
+
+    // MARK: - Evolution
+
+    enum EvolutionStatus {
+        case none
+        case notReady(treatsLeft: Int, needsBestFriend: Bool)
+        case ready([CatalogEntry])
+    }
+
+    func evolutionStatus(of id: UUID) -> EvolutionStatus {
+        guard let record = settings.pets.first(where: { $0.id == id }), let options = evolutionOptions[id],
+              !options.isEmpty else { return .none }
+        let hasBestFriend = bestFriendName(of: id) != nil
+        if Evolution.isReady(treatsEaten: record.treatsEaten, hasBestFriend: hasBestFriend) { return .ready(options) }
+        return .notReady(treatsLeft: max(0, Evolution.treatsNeeded - record.treatsEaten), needsBestFriend: !hasBestFriend)
+    }
+
+    /// Asks PokeAPI (cached on disk) what each pet can evolve into, for pets not known yet.
+    func refreshEvolutionOptions() {
+        for record in settings.pets where evolutionOptions[record.id] == nil {
+            guard let dex = Evolution.dexNumber(of: record.spritePath) else { continue }
+            let id = record.id
+            let store = self.store, evolutions = self.evolutionStore
+            Task {
+                guard let next = try? await evolutions.nextForms(of: dex) else { return }  // offline: try again later
+                let catalog = next.isEmpty ? [] : ((try? await store.catalog()) ?? [])
+                self.evolutionOptions[id] = next.compactMap { dex in catalog.first { $0.path == Evolution.path(for: dex) } }
+            }
+        }
+    }
+
+    /// Evolves a pet: new sprites and name; same pet, friends and place. Plays a white flash.
+    func evolve(_ id: UUID, into entry: CatalogEntry) {
+        Task {
+            guard let sprites = try? await loadSprites(entry.path),
+                  let index = settings.pets.firstIndex(where: { $0.id == id }) else { return }
+            settings.pets[index].spritePath = entry.path
+            settings.pets[index].displayName = entry.displayName
+            settings.pets[index].treatsEaten = 0
+            playground.replaceMetrics(of: id, with: PetMetrics(sprites: sprites))
+            petViews[id]?.replaceSprites(sprites)
+            petViews[id]?.flash()
+            showEmotion(.joyous, pet: id)
+            evolutionOptions[id] = nil
+            save()
+            refreshEvolutionOptions()
+        }
+    }
+
+    // MARK: - Fetch
+
+    var canPlayFetch: Bool { !isGameRunning && playground.canDropToy }
+
+    /// Drops the fetch ball from a random spot at the top of a screen with pets.
+    func playFetch() {
+        guard canPlayFetch, let spot = playground.randomFeedingSpot(world: worldMonitor.world) else { return }
+        playground.dropToy(at: spot)
     }
 
     // MARK: - Treats
@@ -162,6 +231,7 @@ final class AppModel {
             attach(pet, sprites: sprites)
         }
         save()
+        refreshEvolutionOptions()
     }
 
     // MARK: - Settings
@@ -272,6 +342,13 @@ final class AppModel {
         let dt = lastTick == 0 ? 1.0 / 60.0 : min(now - lastTick, 0.1)
         lastTick = now
         let cursor = NSEvent.mouseLocation
+        tickCount += 1
+        if tickCount % 60 == 1 {  // once a second is plenty for the clock and accessibility settings
+            playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
+            playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+        playground.setUserIdle(CGEventSource.secondsSinceLastEventType(.combinedSessionState,
+                                                                       eventType: CGEventType(rawValue: ~0)!))
         let events = playground.tick(dt: dt, world: worldMonitor.world, cursor: cursor, cursorMode: settings.cursorMode)
         var friendshipsChanged = false
         for event in events {
@@ -291,6 +368,13 @@ final class AppModel {
                 if let record = catches.last(where: { $0.petID == id }) { gameUI.addEffect(.stars, at: record.position) }
             case .friendshipChanged:
                 friendshipsChanged = true
+            case .emotion(let id, let emotion):
+                showEmotion(emotion, pet: id)
+            case .treatEaten(let id):
+                if let index = settings.pets.firstIndex(where: { $0.id == id }) {
+                    settings.pets[index].treatsEaten += 1
+                    friendshipsChanged = true  // save the count too
+                }
             case .roundEnded:
                 showResults()
             default:
@@ -322,9 +406,24 @@ final class AppModel {
         }
     }
 
-    /// Opens a panel for each new treat and closes panels whose treat is gone.
+    /// Shows an emotion bubble: the emoji at once, then the Pokémon's portrait once it's loaded.
+    private func showEmotion(_ emotion: Emotion, pet id: UUID) {
+        guard let view = petViews[id] else { return }
+        view.showEmotion(emotion)
+        guard let path = settings.pets.first(where: { $0.id == id })?.spritePath else { return }
+        let store = self.store
+        Task {
+            var url = await store.portrait(for: path, emotion: emotion)
+            if url == nil, path.contains("/"), let dex = Evolution.dexNumber(of: path) {
+                url = await store.portrait(for: Evolution.path(for: dex), emotion: emotion)  // forms often share
+            }
+            if let url { self.petViews[id]?.showPortrait(url, for: emotion) }
+        }
+    }
+
+    /// Opens a panel for each new treat or fetch ball and closes panels whose item is gone.
     private func syncItemViews() {
-        let treats = Set(playground.items.filter { $0.kind.isTreat }.map(\.id))
+        let treats = Set(playground.items.filter { $0.kind.isHandheld }.map(\.id))
         for (id, view) in itemViews where !treats.contains(id) {
             view.close()
             itemViews[id] = nil

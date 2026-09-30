@@ -291,6 +291,10 @@ public struct Playground: Sendable {
 
     public mutating func handle(_ event: ItemEvent, item id: UUID) {
         guard let i = itemIndex(of: id), items[i].kind.isHandheld else { return }
+        if case .carried(let carrierID) = items[i].state, let c = index(of: carrierID),
+           pets[c].brain.script?.priority == 2 {
+            pets[c].endScript()  // the user took the ball out of its mouth
+        }
         switch event {
         case .pressed:
             items[i].state = .held

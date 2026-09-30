@@ -39,15 +39,16 @@ final class PetWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// Positions the panel so the sprite's feet sit at `feet` and draws `sprite` with `hearts` above it.
-    func render(sprite: SpriteFrame, footPadding: Int, hearts: Int, feet: CGPoint, scale: CGFloat) {
+    func render(sprite: SpriteFrame, footPadding: Int, hearts: Int, feet: CGPoint, scale: CGFloat, flash: CGFloat = 0) {
         let width = CGFloat(sprite.image.width) * scale
         let height = CGFloat(sprite.image.height) * scale
         let rect = NSRect(x: (feet.x - width / 2).rounded(), y: (feet.y - CGFloat(footPadding) * scale).rounded(),
                           width: width, height: height + Self.heartSpace)
         if rect != frame { setFrame(rect, display: false) }
-        if petView.frameImage !== sprite.image || petView.hearts != hearts {
+        if petView.frameImage !== sprite.image || petView.hearts != hearts || petView.flash != flash {
             petView.frameImage = sprite.image
             petView.hearts = hearts
+            petView.flash = flash
             petView.needsDisplay = true
         }
         self.sprite = sprite
@@ -72,6 +73,8 @@ final class PetView: NSView {
     weak var delegate: PetViewDelegate?
     var frameImage: CGImage?
     var hearts = 0
+    /// 0…1: how strongly the sprite glows white (evolving).
+    var flash: CGFloat = 0
     private var mouseDownPoint: CGPoint?
     private var dragging = false
 
@@ -83,6 +86,14 @@ final class PetView: NSView {
         context.interpolationQuality = .none
         let spriteRect = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - PetWindow.heartSpace)
         context.draw(image, in: spriteRect)
+        if flash > 0 {
+            // Tint only the sprite's own pixels.
+            context.saveGState()
+            context.setBlendMode(.sourceAtop)
+            context.setFillColor(NSColor.white.withAlphaComponent(flash).cgColor)
+            context.fill(spriteRect)
+            context.restoreGState()
+        }
         if hearts > 0 {
             let text = NSAttributedString(string: String(repeating: "♥", count: hearts), attributes: [
                 .font: NSFont.boldSystemFont(ofSize: 18), .foregroundColor: NSColor.systemPink,

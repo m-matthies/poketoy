@@ -89,4 +89,14 @@ import Testing
         play(&playground, seconds: 2, world: world)
         #expect(toy(playground) == nil)
     }
+
+    @Test func grabbingTheBallFromTheCarrierStopsItsWalk() {
+        var (playground, ids) = makePlayground([300])
+        playground.dropToy(at: CGPoint(x: 400, y: 60))
+        playUntil(&playground, seconds: 10, cursor: cursor) { p, _ in carrier(p) != nil }
+        let ball = toy(playground)!.id
+        playground.handle(.pressed, item: ball)
+        #expect(toy(playground)?.state == .held)
+        #expect(playground.pet(ids[0])?.brain.script == nil)
+    }
 }
