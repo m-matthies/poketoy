@@ -353,3 +353,6 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
 - A pet heading for the active window jumps up to it whatever its height, once it is within
   normal horizontal jump reach (it walks underneath first when further away). Other jumps keep
   the 320 pt limit.
+- The same applies to treats: a treat lying on the active window can be reached from anywhere
+  within sight range (800 pt) with one leap of any height; treats elsewhere keep the normal
+  jump limits.

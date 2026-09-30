@@ -163,4 +163,14 @@ import Testing
             #expect(playground.treatTargets.count <= 1)
         }
     }
+
+    @Test func petsJumpUpToTheActiveWindowForATreat() {
+        let active = Surface(id: 7, minX: 300, maxX: 600, y: 700, kind: .window)  // far beyond a normal jump
+        let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, active], activeWindowID: 7)
+        var (playground, ids) = makePlayground([100], world: world)
+        playground.dropTreat(.apple, at: CGPoint(x: 450, y: 750))
+        let result = playUntil(&playground, seconds: 10, world: world) { _, events in eaten(events) != nil }
+        #expect(result.met)
+        #expect(playground.pet(ids[0])?.body.surfaceID == 7)
+    }
 }

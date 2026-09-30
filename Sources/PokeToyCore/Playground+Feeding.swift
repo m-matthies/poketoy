@@ -51,10 +51,14 @@ extension Playground {
                 let distance = hypot(dx, pet.body.position.y - treat.body.position.y)
                 if pet.body.surfaceID == surfaceID {
                     pairs.append((i, t, distance, nil))
-                } else if let surface = world.surface(id: surfaceID, containingX: treat.body.position.x),
-                          world.reachableSurfaces(from: pet.body.position, maxRise: PetBrain.maxJumpRise,
-                                                  maxReach: PetBrain.maxJumpReach, minWidth: 0).contains(surface) {
-                    pairs.append((i, t, distance, surface))
+                } else if let surface = world.surface(id: surfaceID, containingX: treat.body.position.x) {
+                    // Treats on the active window are worth a leap of any size; elsewhere normal jump limits apply.
+                    let onActive = surfaceID == world.activeWindowID
+                    let reachable = world.reachableSurfaces(
+                        from: pet.body.position,
+                        maxRise: onActive ? .greatestFiniteMagnitude : PetBrain.maxJumpRise,
+                        maxReach: onActive ? Self.treatSightRange : PetBrain.maxJumpReach, minWidth: 0)
+                    if reachable.contains(surface) { pairs.append((i, t, distance, surface)) }
                 }
             }
         }
