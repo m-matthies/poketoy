@@ -76,6 +76,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(ActionItem("Feed", key: "f", enabled: { [unowned model] in model.canFeed }) {
             [unowned model] in model.feed()
         })
+        appMenu.addItem(ActionItem("Start/End Catch Game", key: "g") { [unowned model] in
+            if model.isGameRunning { model.endCatchGame() } else { model.startCatchGame() }
+        })
         appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit PokeToy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -100,6 +103,11 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         menu.addItem(ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) })
         menu.addItem(ActionItem("Add Pokémon…") { [unowned model] in model.showPicker() })
         menu.addItem(ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() })
+        if model.isGameRunning {
+            menu.addItem(ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() })
+        } else {
+            menu.addItem(ActionItem("Start Catch Game") { [unowned model] in model.startCatchGame() })
+        }
         menu.addItem(.separator())
 
         let pets = model.settings.pets
