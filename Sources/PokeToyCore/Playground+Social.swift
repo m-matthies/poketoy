@@ -115,7 +115,8 @@ extension Playground {
                     continue
                 }
                 var (chaser, runner) = (i, j)
-                if moment.stage == 0, abs(pets[i].body.position.x - pets[j].body.position.x) < 20 {
+                let reach = pets[i].halfWidth + pets[j].halfWidth + 10  // they can't overlap, so "caught" is touching
+                if moment.stage == 0, abs(pets[i].body.position.x - pets[j].body.position.x) < reach {
                     (chaser, runner) = (j, i)  // tagged: swap roles once
                     moments[m].a = moment.b
                     moments[m].b = moment.a

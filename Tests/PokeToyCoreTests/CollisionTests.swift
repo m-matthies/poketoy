@@ -36,21 +36,6 @@ import Testing
         }
     }
 
-    @Test func petsWalkingIntoEachOtherTurnAround() {
-        var (playground, _) = makePlayground([450, 470], scale: 2)
-        let world = TestWorld.floorOnly
-        playground.pets[0].update(BrainContext(dt: 1.0 / 60, world: world, cursor: CGPoint(x: 900, y: 60),
-                                               cursorMode: .follow, halfWidth: playground.pets[0].halfWidth,
-                                               animationFinished: false))
-        playground.pets[1].update(BrainContext(dt: 1.0 / 60, world: world, cursor: CGPoint(x: 0, y: 60),
-                                               cursorMode: .follow, halfWidth: playground.pets[1].halfWidth,
-                                               animationFinished: false))
-        #expect(playground.pets[0].body.velocity.dx > 0)
-        #expect(playground.pets[1].body.velocity.dx < 0)
-        playground.collisionRules(world: world)
-        #expect(playground.pets[0].brain.script?.moveTo == 390)
-        #expect(playground.pets[1].brain.script?.moveTo == 530)
-    }
 
     @Test func wildPokemonAreNeverKnocked() {
         var playground = Playground(seed: 1, scale: 2)

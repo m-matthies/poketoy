@@ -4,7 +4,7 @@ import Foundation
 extension Playground {
     static let knockSpeed: CGFloat = 250
 
-    /// Thrown pets knock over the pets they hit; pets walking into each other turn around.
+    /// Thrown pets knock over the pets they hit. (Walkers meeting each other: see `passingRules`.)
     mutating func collisionRules(world: World) {
         let own = pets.indices.filter { pets[$0].role == .own && pets[$0].visible }
 
@@ -26,20 +26,5 @@ extension Playground {
             }
         }
 
-        for x in own.indices {
-            for y in own.indices where y > x {
-                let i = own[x], j = own[y]
-                guard case .walk = pets[i].brain.state, case .walk = pets[j].brain.state,
-                      let surface = pets[i].body.surfaceID, surface == pets[j].body.surfaceID,
-                      pets[i].bodyRect.intersects(pets[j].bodyRect) else { continue }
-                let toward = pets[j].body.position.x - pets[i].body.position.x
-                guard pets[i].body.velocity.dx * toward > 0, pets[j].body.velocity.dx * -toward > 0 else { continue }
-                for (me, other) in [(i, j), (j, i)] {
-                    let away: CGFloat = pets[me].body.position.x < pets[other].body.position.x ? -1 : 1
-                    let back = clampOnSurface(pets[me].body.position.x + away * 60, pet: me, world: world)
-                    pets[me].perform(Script(anim: .walk, moveTo: back, end: .arrived, priority: 1))
-                }
-            }
-        }
     }
 }

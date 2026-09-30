@@ -60,6 +60,15 @@ public struct PetActor: Identifiable, Sendable {
     }
 
     @discardableResult
+    mutating func hop(to x: CGFloat, on surface: Surface) -> Bool {
+        brain.hop(to: x, on: surface, halfWidth: halfWidth, body: &body)
+    }
+
+    mutating func redirectWalk(to x: CGFloat) {
+        brain.redirectWalk(to: x, body: &body)
+    }
+
+    @discardableResult
     mutating func jump(to surface: Surface, x: CGFloat) -> Bool {
         brain.jump(to: surface, x: x, halfWidth: halfWidth, body: &body)
     }
@@ -271,6 +280,7 @@ public struct Playground: Sendable {
         gameRulesBeforePhysics(dt: dt, world: world)
         socialRules(dt: dt, world: world)
         feedingRules(world: world)
+        passingRules(dt: dt, world: world)
     }
 
     /// Rules that react to where things ended up (collisions, Poké Ball hits).

@@ -105,6 +105,8 @@ public struct PetBrain: Sendable {
         case landing
         case held
         case scripted(Script, elapsed: Double)
+        /// Hopping over another pet; `resume` is what it was doing and continues on landing.
+        indirect case hop(resume: State)
     }
 
     public static let walkSpeed: CGFloat = 70
@@ -140,9 +142,12 @@ public struct PetBrain: Sendable {
 
     public var isSleeping: Bool { state == .sleep }
 
+    /// The running script, also while hopping over something mid-script.
     public var script: Script? {
-        if case .scripted(let script, _) = state { return script }
-        return nil
+        switch state {
+        case .scripted(let script, _), .hop(resume: .scripted(let script, _)): return script
+        default: return nil
+        }
     }
 
     private var speedFactor: CGFloat { personality == .wild ? 1.6 : 1 }
@@ -215,6 +220,28 @@ public struct PetBrain: Sendable {
         sinceInteraction = 0
     }
 
+    /// Hops over something in the way, landing at `x` on the same `surface`, then carries on
+    /// with the walk or script it was doing.
+    @discardableResult
+    public mutating func hop(to x: CGFloat, on surface: Surface, halfWidth: CGFloat, body: inout Body) -> Bool {
+        guard body.isGrounded else { return false }
+        switch state {
+        case .walk, .scripted: break
+        default: return false
+        }
+        let resume = state
+        launch(to: surface, x: x, halfWidth: halfWidth, overshoot: 60, &body)
+        state = .hop(resume: resume)
+        return true
+    }
+
+    /// Sends a wandering pet to `x` instead, stopping it this instant.
+    public mutating func redirectWalk(to x: CGFloat, body: inout Body) {
+        guard case .walk(_, let speed) = state else { return }
+        state = .walk(targetX: x, speed: speed)
+        body.velocity.dx = 0
+    }
+
     public mutating func endScript(body: inout Body) {
         guard case .scripted = state else { return }
         enterIdle(&body)
@@ -265,6 +292,9 @@ public struct PetBrain: Sendable {
             return
         case .jump:
             if body.isGrounded { enterIdle(&body) }
+            return
+        case .hop(let resume):
+            if body.isGrounded { state = resume }
             return
         default:
             break
@@ -473,13 +503,13 @@ public struct PetBrain: Sendable {
         setPose(.walk, dx > 0 ? .right : .left)
     }
 
-    private mutating func launch(to surface: Surface, x: CGFloat, halfWidth: CGFloat, _ body: inout Body) {
+    private mutating func launch(to surface: Surface, x: CGFloat, halfWidth: CGFloat, overshoot: CGFloat = 40,
+                                 _ body: inout Body) {
         let p = body.position
         let landingX = surface.width > halfWidth * 2
             ? min(max(x, surface.minX + halfWidth), surface.maxX - halfWidth)
             : surface.midX
         let g = Physics.gravity
-        let overshoot: CGFloat = 40
         let vy = (2 * g * (surface.y - p.y + overshoot)).squareRoot()
         let flightTime = vy / g + (2 * overshoot / g).squareRoot()
         body.velocity = CGVector(dx: (landingX - p.x) / flightTime, dy: vy)
