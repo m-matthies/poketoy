@@ -47,7 +47,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - Menu bar paw icon or right-click the Dock icon:
   - **Show / Hide Pets**, **Add Pokémon…**, **Feed**, **Play Fetch**, **Start / End Catch Game**, **Daily Challenge**,
     **Pokédex…**
-  - **Pets** — best friend, evolution progress / Evolve, Remove
+  - **Pets** — best friend, evolution progress / Evolve, Release
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×
 - **Add Pokémon…** lists Pokémon with complete sprite sets; tick **Show all Pokémon** for every entry on SpriteCollab.

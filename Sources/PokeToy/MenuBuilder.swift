@@ -157,7 +157,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                 case .none:
                     break
                 }
-                submenu.addItem(ActionItem("Remove") { [unowned model] in model.removePet(pet.id) })
+                submenu.addItem(ActionItem("Release") { [unowned model] in model.removePet(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)
             }

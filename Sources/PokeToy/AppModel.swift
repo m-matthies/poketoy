@@ -98,11 +98,13 @@ final class AppModel {
         refreshEvolutionOptions()
     }
 
+    /// Releases a pet: it leaves the screen (its Pokédex entry stays, as a former pet).
     func removePet(_ id: UUID) {
         playground.removePet(id)
         petViews.removeValue(forKey: id)?.close()
         settings.pets.removeAll { $0.id == id }
         save()
+        pokedexWindow.refreshIfVisible()
     }
 
     func bestFriendName(of id: UUID) -> String? {
@@ -261,6 +263,7 @@ final class AppModel {
 
     private func recordInPokedex(_ pet: PetRecord) {
         Pokedex.recordPet(path: pet.spritePath, displayName: pet.displayName, into: &settings.pokedex, at: Date())
+        pokedexWindow.refreshIfVisible()
     }
 
     /// Species keys (e.g. `0025`) of the current pets.
@@ -518,6 +521,7 @@ final class AppModel {
             return
         }
         Pokedex.record(results.catches, into: &settings.pokedex, at: Date())
+        pokedexWindow.refreshIfVisible()  // right after the round, even before the results are closed
         let daily = roundIsDaily
         let dayKey = DailyChallenge.key(for: Date())
         let previousBest = daily ? (settings.dailyBest[dayKey] ?? 0) : settings.bestCatchScore

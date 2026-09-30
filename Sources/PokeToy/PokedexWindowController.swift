@@ -62,14 +62,23 @@ final class PokedexWindowController: NSWindowController, NSTableViewDataSource, 
     }
 
     func show() {
+        reload()
+        NSApp.activate()
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Picks up new catches and pet changes while the window is open.
+    func refreshIfVisible() {
+        if window?.isVisible == true { reload() }
+    }
+
+    private func reload() {
         rows = model.settings.pokedex.map { (key: $0.key, entry: $0.value) }
             .sorted { $0.entry.firstCaught > $1.entry.firstCaught }
         currentPets = model.currentPetSpecies
         header.stringValue = rows.isEmpty ? "No Pokémon yet — adopt or catch some!" : "\(rows.count) species"
         table.reloadData()
-        NSApp.activate()
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
         Task {
             let catalog = await model.catalogForPokedex()
             guard !catalog.isEmpty else { return }
