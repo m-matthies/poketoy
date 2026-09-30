@@ -303,3 +303,19 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
   can fall asleep again. Clicking, dragging or a cursor mode still wake it immediately as
   before. Wild Pokémon never sleep, so this only affects own pets; pets napping together
   wake independently.
+
+### Pets prefer the active window
+
+- `World` gains `activeWindowID: Int?`: the frontmost on-screen window of the frontmost
+  application (nil when PokeToy itself is frontmost or nothing qualifies). `WorldMonitor`
+  fills it from `NSWorkspace.frontmostApplication` and the window list (front to back).
+- When an own pet decides where to wander and the active window's top is a surface it is
+  not on, then with probability 0.6 it heads there instead of wandering randomly:
+  - active window top reachable by a jump → jump onto it;
+  - active window above but out of reach → walk to the spot under it (then jump next time);
+  - active window below (pet is on a higher window) → walk off that window's nearer edge
+    toward it and drop down.
+- While standing on the active window a pet no longer strolls off its edges on purpose and
+  only rarely (3%) jumps to another surface; it keeps wandering along it.
+- If the active window moves, pets ride it as before; if another window becomes active,
+  pets drift over to it on their next decisions. Wild Pokémon ignore the active window.
