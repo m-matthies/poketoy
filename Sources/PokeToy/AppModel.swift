@@ -37,6 +37,11 @@ final class AppModel {
     private var petViews: [UUID: PetController] = [:]
     private var itemViews: [UUID: ItemController] = [:]
     private var wildSprites: [String: SpriteSet] = [:]
+    /// This round's wild Pokémon by path, and which path each spawned wild has.
+    private var rosterSpecs: [String: WildSpec] = [:]
+    private var wildPaths: [UUID: String] = [:]
+    private var roundIsDaily = false
+    private lazy var pokedexWindow = PokedexWindowController(model: self)
     private var gameAttempt = UUID()
     private var timer: Timer?
     private var lastTick: CFTimeInterval = 0
@@ -225,21 +230,41 @@ final class AppModel {
     var isGameRunning: Bool { gameUI.status != .idle || playground.game != nil }
 
     /// Loads a roster of wild Pokémon (complete sprite sets first, cached ones when offline) and starts a round.
-    func startCatchGame() {
+    /// The daily challenge uses the day's fixed roster and seed.
+    func startCatchGame(daily: Bool = false) {
         guard !isGameRunning else { return }
         gameUI.beginLoading()
         let attempt = UUID()
         gameAttempt = attempt
+        roundIsDaily = daily
+        let seed = daily ? DailyChallenge.seed(for: Date()) : UInt64.random(in: .min ... .max)
         Task {
-            let roster = await loadRoster()
+            let roster = await loadRoster(daily: daily, seed: seed)
             guard gameAttempt == attempt, gameUI.status == .loading else { return }  // cancelled meanwhile
             if roster.isEmpty {
                 gameUI.fail("Couldn't load wild Pokémon")
             } else {
-                playground.startGame(roster: roster, seed: .random(in: .min ... .max))
+                playground.startGame(roster: roster, seed: seed)
                 gameUI.begin()
             }
         }
+    }
+
+    func throwBerry(from point: CGPoint, velocity: CGVector) {
+        playground.throwBerry(from: point, velocity: velocity)
+    }
+
+    func showPokedex() {
+        pokedexWindow.show()
+    }
+
+    /// The Pokémon list and a portrait loader for the Pokédex window.
+    func catalogForPokedex() async -> [CatalogEntry] {
+        (try? await store.catalog()) ?? []
+    }
+
+    func normalPortrait(for key: String) async -> URL? {
+        await store.portrait(for: key, names: ["Normal"])
     }
 
     func endCatchGame() {
@@ -260,7 +285,8 @@ final class AppModel {
     func keepCatches(_ records: [CatchRecord]) {
         for record in records {
             guard settings.pets.count < Playground.maxOwnPets, let sprites = wildSprites[record.path] else { continue }
-            let pet = PetRecord(spritePath: record.path, displayName: record.displayName, position: record.position)
+            let name = record.isShiny ? "\(record.displayName) (Shiny)" : record.displayName
+            let pet = PetRecord(spritePath: record.path, displayName: name, position: record.position)
             settings.pets.append(pet)
             attach(pet, sprites: sprites)
         }
@@ -328,29 +354,58 @@ final class AppModel {
         petViews[record.id] = view
     }
 
-    private func loadRoster() async -> [WildSpec] {
-        let store = self.store
+    /// Up to 7 regular Pokémon plus a legendary (base forms), with shiny sprites when SpriteCollab has them and
+    /// flying types from PokeAPI. Offline, fills up with Pokémon already on disk.
+    private func loadRoster(daily: Bool, seed: UInt64) async -> [WildSpec] {
+        let store = self.store, evolutions = self.evolutionStore
         // Keep loading short: the overlay captures the mouse meanwhile.
         let catalog = (try? await withDeadline(seconds: 3) { try await store.catalog() }) ?? []
         // Keep only sprites still needed by an open results window; this round loads its own.
         let pending = gameUI.pendingCatchPaths
         wildSprites = wildSprites.filter { pending.contains($0.key) }
-        let complete = catalog.filter(\.isComplete)
-        let pool = complete.isEmpty ? catalog : complete
-        var loaded = await loadWild(Array(pool.shuffled().prefix(8)))
+        let picks: [CatalogEntry]
+        if daily {
+            picks = DailyChallenge.roster(from: catalog, seed: seed)
+        } else {
+            let base = catalog.filter { $0.isComplete && !$0.path.contains("/") }
+            let legendaries = base.filter { Legendaries.isLegendary(path: $0.path) }
+            let regular = base.filter { !Legendaries.isLegendary(path: $0.path) }
+            picks = Array(regular.shuffled().prefix(DailyChallenge.regulars)) + Array(legendaries.shuffled().prefix(1))
+        }
+        var loaded = await loadWild(picks)
         if loaded.count < 3 {
             // Offline or unlucky: fill up with Pokémon already on disk (the bundled Pikachu is always there).
             let names = Dictionary(catalog.map { ($0.path, $0.displayName) }, uniquingKeysWith: { first, _ in first })
             let have = Set(loaded.map(\.entry.path))
-            let cached = await store.cachedSpritePaths().filter { !have.contains($0) }.shuffled().prefix(8 - loaded.count)
+            let cached = await store.cachedSpritePaths().filter { !have.contains($0) && !$0.contains("/") }
+                .shuffled().prefix(8 - loaded.count)
             loaded += await loadWild(cached.map {
                 CatalogEntry(path: $0, displayName: names[$0] ?? ($0 == "0025" ? "Pikachu" : "Pokémon #\($0)"))
             })
         }
-        for wild in loaded { wildSprites[wild.entry.path] = wild.sprites }
-        return loaded.map {
-            WildSpec(path: $0.entry.path, displayName: $0.entry.displayName, metrics: PetMetrics(sprites: $0.sprites))
+        // Shiny sprites for the roster, where SpriteCollab has them.
+        let paths = Set(catalog.map(\.path))
+        let shinyEntries = loaded.compactMap { wild -> CatalogEntry? in
+            let shinyPath = "\(wild.entry.path)/0000/0001"
+            return paths.contains(shinyPath) ? CatalogEntry(path: shinyPath, displayName: wild.entry.displayName) : nil
         }
+        let shinies = await loadWild(shinyEntries)
+        for wild in loaded + shinies { wildSprites[wild.entry.path] = wild.sprites }
+        let shinyPaths = Set(shinies.map(\.entry.path))
+
+        var roster: [WildSpec] = []
+        for wild in loaded {
+            let dex = Evolution.dexNumber(of: wild.entry.path) ?? 0
+            let types = (try? await withDeadline(seconds: 3) { try await evolutions.types(of: dex) }) ?? []
+            let shinyPath = "\(wild.entry.path)/0000/0001"
+            roster.append(WildSpec(path: wild.entry.path, displayName: wild.entry.displayName,
+                                   metrics: PetMetrics(sprites: wild.sprites),
+                                   isLegendary: Legendaries.isLegendary(path: wild.entry.path),
+                                   shinyPath: shinyPaths.contains(shinyPath) ? shinyPath : nil,
+                                   canFly: types.contains("flying")))
+        }
+        rosterSpecs = Dictionary(roster.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        return roster
     }
 
     private func loadWild(_ entries: [CatalogEntry]) async -> [LoadedWild] {
@@ -391,13 +446,23 @@ final class AppModel {
         for event in events {
             switch event {
             case .wildSpawned(let id, let path):
+                wildPaths[id] = path
                 if let sprites = wildSprites[path] {
                     let view = PetController(id: id, sprites: sprites, model: self, interactive: false)
                     view.show()
                     petViews[id] = view
                 }
+            case .wildShiny(let id):
+                // A shiny: swap in its shiny sprites and make it sparkle.
+                if let path = wildPaths[id], let shinyPath = rosterSpecs[path]?.shinyPath,
+                   let sprites = wildSprites[shinyPath] {
+                    petViews[id]?.replaceSprites(sprites)
+                    wildPaths[id] = shinyPath
+                }
+                if let pet = playground.pet(id) { gameUI.addEffect(.stars, at: pet.body.position) }
             case .wildRemoved(let id):
                 petViews.removeValue(forKey: id)?.close()
+                wildPaths[id] = nil
             case .ballHit(let id):
                 if let pet = playground.pet(id) { gameUI.addEffect(.flash, at: pet.body.position) }
             case .caught(let id):
@@ -430,16 +495,21 @@ final class AppModel {
             gameUI.finish()  // nothing happened (e.g. ended during the countdown): no results window
             return
         }
-        let isNewBest = results.score > settings.bestCatchScore
+        Pokedex.record(results.catches, into: &settings.pokedex, at: Date())
+        let daily = roundIsDaily
+        let dayKey = DailyChallenge.key(for: Date())
+        let previousBest = daily ? (settings.dailyBest[dayKey] ?? 0) : settings.bestCatchScore
+        let isNewBest = results.score > previousBest
         if isNewBest {
-            settings.bestCatchScore = results.score
-            save()
+            if daily { settings.dailyBest[dayKey] = results.score } else { settings.bestCatchScore = results.score }
         }
+        save()
+        let best = max(previousBest, results.score)
         gameUI.showFinalScore(results.score) { [weak self] in
             guard let self else { return }
             let keepable = CatchGame.keepable(results.catches, ownPetCount: self.settings.pets.count,
                                               cap: Playground.maxOwnPets)
-            self.gameUI.showResults(results, best: self.settings.bestCatchScore, isNewBest: isNewBest, keepable: keepable)
+            self.gameUI.showResults(results, best: best, isNewBest: isNewBest, keepable: keepable, daily: daily)
         }
     }
 
@@ -447,7 +517,7 @@ final class AppModel {
     private func showEmotion(_ emotion: Emotion, pet id: UUID) {
         guard let view = petViews[id] else { return }
         view.showEmotion(emotion)
-        guard let path = settings.pets.first(where: { $0.id == id })?.spritePath else { return }
+        guard let path = settings.pets.first(where: { $0.id == id })?.spritePath ?? wildPaths[id] else { return }
         let store = self.store
         Task {
             var url = await store.portrait(for: path, emotion: emotion)

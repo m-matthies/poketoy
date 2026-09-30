@@ -8,7 +8,7 @@ final class ResultsWindowController: NSWindowController {
     private let results: CatchResults
     private var checkboxes: [NSButton] = []
 
-    init(model: AppModel, results: CatchResults, best: Int, isNewBest: Bool, keepable: Int) {
+    init(model: AppModel, results: CatchResults, best: Int, isNewBest: Bool, keepable: Int, daily: Bool) {
         self.model = model
         self.results = results
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 220), styleMask: [.titled, .closable],
@@ -21,13 +21,15 @@ final class ResultsWindowController: NSWindowController {
         let headline = NSTextField(labelWithString: "Score: \(results.score)")
         headline.font = .boldSystemFont(ofSize: 22)
         rows.append(headline)
-        rows.append(NSTextField(labelWithString: isNewBest ? "New best score!" : "Best: \(best)"))
+        let bestLabel = daily ? "Daily best" : "Best"
+        rows.append(NSTextField(labelWithString: isNewBest ? "New \(bestLabel.lowercased()) score!" : "\(bestLabel): \(best)"))
         if results.catches.isEmpty {
             rows.append(NSTextField(labelWithString: "Nothing caught this time."))
         } else {
             rows.append(NSTextField(labelWithString: "Caught — tick the ones to keep as pets:"))
             for (index, record) in results.catches.enumerated() {
-                let box = NSButton(checkboxWithTitle: record.displayName, target: nil, action: nil)
+                let title = record.isShiny ? "✦ \(record.displayName) (Shiny)" : record.displayName
+                let box = NSButton(checkboxWithTitle: title, target: nil, action: nil)
                 box.state = index < keepable ? .on : .off
                 box.isEnabled = index < keepable
                 checkboxes.append(box)

@@ -34,11 +34,18 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - **Play Fetch** (⌘J in the app menu) drops a ball: pets race for it and the winner brings it back to below your cursor.
 - **Evolution:** after 15 treats and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
   per possible evolution; evolution data comes from [PokeAPI](https://pokeapi.co)).
-- **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run across the screen. Press, flick and release to throw
-  Poké Balls. Hits score 25, catches 100. Afterwards, pick which catches to keep as pets. Esc or the **End** button ends
-  the round early.
+- **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run — or fly — across the screen. Press, flick and
+  release to throw; a dotted arc shows where it will go. Hits score 25, catches 100; **legendaries** (rare) are worth 3×,
+  **shinies** (1 in 64, they sparkle) 2×, and consecutive hits build a **combo** (up to 2× points) that upgrades your ball to
+  a **Great Ball** after 3 hits and an **Ultra Ball** after 5 (better catch chances) — a miss resets it. Catching with the
+  first ball that hit is worth a +50 bonus. Hold **⇧** while releasing to throw one of your 3 **Razz Berries**: it calms a
+  wild Pokémon (slower, unafraid, easier to catch). Afterwards, pick which catches to keep as pets. Esc or the **End**
+  button ends the round early.
+- **Daily Challenge**: the same Pokémon and the same round for everyone today, with its own best score.
+- **Pokédex…** lists every species you've caught (✦ for shinies) and how complete your collection is.
 - Menu bar paw icon or right-click the Dock icon:
-  - **Show / Hide Pets**, **Add Pokémon…**, **Feed**, **Play Fetch**, **Start / End Catch Game**
+  - **Show / Hide Pets**, **Add Pokémon…**, **Feed**, **Play Fetch**, **Start / End Catch Game**, **Daily Challenge**,
+    **Pokédex…**
   - **Pets** — best friend, evolution progress / Evolve, Remove
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×

@@ -117,8 +117,13 @@ public actor SpriteStore {
     /// A local portrait image for `path` showing `emotion`, trying its fallbacks in order (ending with "Normal").
     /// Portraits SpriteCollab doesn't have are remembered so they aren't requested again. Nil if none is available.
     public func portrait(for path: String, emotion: Emotion) async -> URL? {
+        await portrait(for: path, names: emotion.portraitNames)
+    }
+
+    /// A local portrait image for `path`: the first of `names` SpriteCollab has (e.g. ["Normal"]).
+    public func portrait(for path: String, names: [String]) async -> URL? {
         let directory = cacheDirectory.appendingPathComponent("portrait").appendingPathComponent(path, isDirectory: true)
-        for name in emotion.portraitNames {
+        for name in names {
             let file = directory.appendingPathComponent("\(name).png")
             if FileManager.default.fileExists(atPath: file.path) { return file }
             let missing = directory.appendingPathComponent(".missing-\(name)")
