@@ -23,27 +23,6 @@ import Testing
         for dex in [1, 25, 133, 149, 448] { #expect(!Legendaries.isLegendary(dex: dex)) }
     }
 
-    @Test func dailySeedAndKeyFollowTheDate() {
-        #expect(DailyChallenge.seed(for: date(2026, 9, 30)) == 20_260_930)
-        #expect(DailyChallenge.key(for: date(2026, 9, 30)) == "2026-09-30")
-        #expect(DailyChallenge.seed(for: date(2026, 10, 1)) != DailyChallenge.seed(for: date(2026, 9, 30)))
-    }
-
-    @Test func dailyRosterIsDeterministic() {
-        let seed = DailyChallenge.seed(for: date(2026, 9, 30))
-        let first = DailyChallenge.roster(from: catalog, seed: seed)
-        #expect(first == DailyChallenge.roster(from: catalog.shuffled(), seed: seed))
-        #expect(first != DailyChallenge.roster(from: catalog, seed: seed + 1))
-    }
-
-    @Test func dailyRosterHasOneLegendaryAndBaseFormsOnly() {
-        let roster = DailyChallenge.roster(from: catalog, seed: 20_260_930)
-        #expect(roster.count == 13)
-        #expect(roster.filter { Legendaries.isLegendary(dex: Evolution.dexNumber(of: $0.path) ?? 0) }.count == 1)
-        #expect(roster.allSatisfy { !$0.path.contains("/") && $0.isComplete })
-        #expect(Set(roster.map(\.path)).count == 13)
-    }
-
     @Test func pokedexRecordsCatches() {
         var pokedex: [String: PokedexEntry] = [:]
         let pikachu = CatchRecord(petID: UUID(), path: "0025", displayName: "Pikachu", position: .zero)
@@ -61,14 +40,16 @@ import Testing
         #expect(Pokedex.completion(caught: [:], catalog: []) == 0)
     }
 
-    @Test func settingsDecodePokedexAndDailyBest() throws {
+    @Test func settingsDecodePokedex() throws {
         var settings = Settings.default
         settings.pokedex = ["0025": PokedexEntry(displayName: "Pikachu", firstCaught: Date(timeIntervalSince1970: 0), count: 1, shinyCaught: false)]
-        settings.dailyBest = ["2026-09-30": 450]
         let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
         #expect(again == settings)
         let old = try JSONDecoder().decode(Settings.self, from: Data(#"{"scale": 2}"#.utf8))
-        #expect(old.pokedex.isEmpty && old.dailyBest.isEmpty)
+        #expect(old.pokedex.isEmpty)
+        // Settings from when there was a daily challenge still load.
+        let withDaily = try JSONDecoder().decode(Settings.self, from: Data(#"{"scale": 3, "dailyBest": {"2026-09-30": 450}}"#.utf8))
+        #expect(withDaily.scale == 3)
     }
 
     @Test func storeFetchesTypes() async throws {
@@ -104,14 +85,6 @@ import Testing
         let entry = try JSONDecoder().decode(PokedexEntry.self, from: Data(json.utf8))
         #expect(!entry.everOwned)
         #expect(entry.count == 2)
-    }
-
-    @Test func dailyKeysUseTheGregorianCalendar() {
-        var buddhist = Calendar(identifier: .buddhist)
-        buddhist.timeZone = .current
-        let day = date(2026, 9, 30)
-        #expect(DailyChallenge.key(for: day) == "2026-09-30")
-        #expect(buddhist.component(.year, from: day) != 2026)  // the user's own calendar doesn't matter
     }
 
     @Test func petRecordsKnowWhetherTheyAreShiny() throws {

@@ -87,6 +87,8 @@ public struct CatchGame: Sendable {
     public static let legendaryChance = 0.05
     public static let shinyChance = 1.0 / 64
     public static let berriesPerRound = 3
+    /// Regular Pokémon per round (plus one legendary): enough that a 60 s round rarely sees the same one twice.
+    public static let rosterRegulars = 12
     public static let calmBonus = 0.15
     public static let firstThrowBonus = 50
     public static let hitPoints = 25
@@ -105,7 +107,7 @@ public struct CatchGame: Sendable {
     var catchChance: Double?
     var shinyOdds = CatchGame.shinyChance
     // Independent random streams, so an optional extra (a shiny sprite, a flying type) never shifts
-    // the spawns or catch rolls of a seeded round such as the daily challenge.
+    // the spawns or catch rolls of a seeded round.
     private var spawnRNG: SplitMix64
     private var placeRNG: SplitMix64
     private var rollRNG: SplitMix64

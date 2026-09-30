@@ -10,7 +10,7 @@ final class ResultsWindowController: NSWindowController {
     /// Portrait icons next to the catches, filled in as they load.
     private var icons: [NSImageView] = []
 
-    init(model: AppModel, results: CatchResults, best: Int, isNewBest: Bool, keepable: Int, daily: Bool) {
+    init(model: AppModel, results: CatchResults, best: Int, isNewBest: Bool, keepable: Int) {
         self.model = model
         self.results = results
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 220), styleMask: [.titled, .closable],
@@ -23,8 +23,7 @@ final class ResultsWindowController: NSWindowController {
         let headline = NSTextField(labelWithString: "Score: \(results.score)")
         headline.font = .boldSystemFont(ofSize: 22)
         rows.append(headline)
-        let bestLabel = daily ? "Daily best" : "Best"
-        rows.append(NSTextField(labelWithString: isNewBest ? "New \(bestLabel.lowercased()) score!" : "\(bestLabel): \(best)"))
+        rows.append(NSTextField(labelWithString: isNewBest ? "New best score!" : "Best: \(best)"))
         if results.catches.isEmpty {
             rows.append(NSTextField(labelWithString: "Nothing caught this time."))
         } else {

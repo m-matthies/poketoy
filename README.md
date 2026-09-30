@@ -46,12 +46,11 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   button ends the round early.
 - Each round brings at least 10 different wild Pokémon, species you don't have yet first; they walk in from the screen
   edges or pop up anywhere on the floor or on top of windows, and one you've caught doesn't come back that round.
-- **Daily Challenge**: the same Pokémon and the same round for everyone today, with its own best score (needs a connection).
 - **Pokédex…** lists every species you've caught, kept as a pet (current and former) or seen (downloaded), in national dex
   order, each with a short description from PokeAPI (type, category and a line of Pokédex text), ✦ for shinies, and how
   complete your collection is.
 - Menu bar paw icon or right-click the Dock icon:
-  - **Show / Hide Pets**, **Feed**, **Play Fetch**, **Start / End Catch Game**, **Daily Challenge**,
+  - **Show / Hide Pets**, **Feed**, **Play Fetch**, **Start / End Catch Game**,
     **Pokédex…**
   - **Pets** — best friend, evolution progress / Evolve, Release
   - **Cursor** — Off, Follow Cursor, Run from Cursor

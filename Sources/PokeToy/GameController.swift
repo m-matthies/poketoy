@@ -103,9 +103,9 @@ final class GameController {
         for overlay in overlays { overlay.gameView.refresh() }
     }
 
-    func showResults(_ results: CatchResults, best: Int, isNewBest: Bool, keepable: Int, daily: Bool) {
+    func showResults(_ results: CatchResults, best: Int, isNewBest: Bool, keepable: Int) {
         let controller = ResultsWindowController(model: model, results: results, best: best, isNewBest: isNewBest,
-                                                 keepable: keepable, daily: daily)
+                                                 keepable: keepable)
         openResults.append(controller)
         controller.show()
     }

@@ -27,3 +27,12 @@ Date: 2026-09-30
   Pikachu, the catalog and PokeAPI caches stay), then the starter window.
 - **Fetch:** `Item.playTime` counts every second since the ball appeared; at `Playground.fetchLength` (60 s) a carrier
   drops it and it fades out (replacing the old 5-minute "untouched" lifetime).
+
+## Later changes
+
+- **Starters bundled:** Pikachu, Charmander, Squirtle and Bulbasaur ship in `Resources/Sprites` (the sheets PokeToy uses)
+  and `Resources/Portraits` (every emotion-bubble portrait); `scripts/bundle-starters.py` refreshes them. `SpriteStore`
+  serves bundled portraits and never downloads portraits for a bundled species.
+- **Daily Challenge removed:** with rosters that favour species the player hasn't got yet, a shared fixed roster no
+  longer fits. `DailyChallenge`, `Settings.dailyBest` and the menu items are gone (old settings still load); the roster
+  size lives in `CatchGame.rosterRegulars` (12).

@@ -90,9 +90,6 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         }) { [unowned model] in
             if model.isGameRunning { model.endCatchGame() } else { model.startCatchGame() }
         })
-        appMenu.addItem(ActionItem("Daily Challenge", enabled: { [unowned model] in !model.isGameRunning }) {
-            [unowned model] in model.startCatchGame(daily: true)
-        })
         appMenu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
         appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
         appMenu.addItem(.separator())
@@ -131,7 +128,6 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             menu.addItem(ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() })
         } else {
             menu.addItem(ActionItem("Start Catch Game") { [unowned model] in model.startCatchGame() })
-            menu.addItem(ActionItem("Daily Challenge") { [unowned model] in model.startCatchGame(daily: true) })
         }
         menu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
         menu.addItem(.separator())

@@ -30,8 +30,6 @@ final class AppModel {
     /// This round's wild Pokémon by path, and which path each spawned wild has.
     private var rosterSpecs: [String: WildSpec] = [:]
     private var wildPaths: [UUID: String] = [:]
-    /// The day ("yyyy-MM-dd") of a daily challenge round, fixed when it starts; nil for a normal round.
-    private var roundDailyKey: String?
     private lazy var pokedexWindow = PokedexWindowController(model: self)
     private var gameAttempt = UUID()
     private var timer: Timer?
@@ -245,21 +243,17 @@ final class AppModel {
     var isGameRunning: Bool { gameUI.status != .idle || playground.game != nil }
 
     /// Loads a roster of wild Pokémon (complete sprite sets first, cached ones when offline) and starts a round.
-    /// The daily challenge uses the day's fixed roster and seed.
-    func startCatchGame(daily: Bool = false) {
+    func startCatchGame() {
         guard !isGameRunning else { return }
         gameUI.beginLoading()
         let attempt = UUID()
         gameAttempt = attempt
-        let today = Date()
-        roundDailyKey = daily ? DailyChallenge.key(for: today) : nil
-        let seed = daily ? DailyChallenge.seed(for: today) : UInt64.random(in: .min ... .max)
+        let seed = UInt64.random(in: .min ... .max)
         Task {
-            let roster = await loadRoster(daily: daily, seed: seed)
+            let roster = await loadRoster()
             guard gameAttempt == attempt, gameUI.status == .loading else { return }  // cancelled meanwhile
             if roster.isEmpty {
-                gameUI.fail(daily ? "Couldn't load today's Pokémon — the Daily Challenge needs a connection"
-                                  : "Couldn't load wild Pokémon")
+                gameUI.fail("Couldn't load wild Pokémon")
             } else {
                 playground.startGame(roster: roster, seed: seed)
                 gameUI.begin()
@@ -450,32 +444,23 @@ final class AppModel {
     /// 12 regular Pokémon plus a legendary (base forms; in a normal round, species not yet in the Pokédex first),
     /// with shiny sprites when SpriteCollab has them and flying types from PokeAPI. A normal round tops up to at
     /// least 10 with more picks, then (offline) with Pokémon already on disk.
-    private func loadRoster(daily: Bool, seed: UInt64) async -> [WildSpec] {
+    private func loadRoster() async -> [WildSpec] {
         let store = self.store, evolutions = self.evolutionStore
         // Keep loading short: the overlay captures the mouse meanwhile.
         let catalog = (try? await withDeadline(seconds: 3) { try await store.catalog() }) ?? []
         // Keep only sprites still needed by an open results window; this round loads its own.
         let pending = gameUI.pendingCatchPaths
         wildSprites = wildSprites.filter { pending.contains($0.key) }
-        let picks: [CatalogEntry]
-        var spares: [CatalogEntry] = []
-        if daily {
-            picks = DailyChallenge.roster(from: catalog, seed: seed)
-        } else {
-            let base = catalog.filter { $0.isComplete && !$0.path.contains("/") }
-            var rng = SystemRandomNumberGenerator()
-            let legendaries = Pokedex.newFirst(base.filter { Legendaries.isLegendary(path: $0.path) },
-                                               pokedex: settings.pokedex, using: &rng)
-            let regular = Pokedex.newFirst(base.filter { !Legendaries.isLegendary(path: $0.path) },
+        let base = catalog.filter { $0.isComplete && !$0.path.contains("/") }
+        var rng = SystemRandomNumberGenerator()
+        let legendaries = Pokedex.newFirst(base.filter { Legendaries.isLegendary(path: $0.path) },
                                            pokedex: settings.pokedex, using: &rng)
-            picks = Array(regular.prefix(DailyChallenge.regulars)) + Array(legendaries.prefix(1))
-            spares = Array(regular.dropFirst(DailyChallenge.regulars).prefix(Self.minimumRoster))
-        }
+        let regular = Pokedex.newFirst(base.filter { !Legendaries.isLegendary(path: $0.path) },
+                                       pokedex: settings.pokedex, using: &rng)
+        let picks = Array(regular.prefix(CatchGame.rosterRegulars)) + Array(legendaries.prefix(1))
+        let spares = Array(regular.dropFirst(CatchGame.rosterRegulars).prefix(Self.minimumRoster))
         var loaded = await loadWild(picks)
-        if daily {
-            // Everyone's round is the same only with the full roster: no substitutes.
-            guard !picks.isEmpty, loaded.count == picks.count else { return [] }
-        } else if loaded.count < Self.minimumRoster {
+        if loaded.count < Self.minimumRoster {
             // Some didn't load in time: try a few more picks, then fill up with Pokémon already on disk
             // (the bundled Pikachu is always there).
             if loaded.count > 0, !spares.isEmpty {
@@ -614,12 +599,10 @@ final class AppModel {
         }
         Pokedex.record(results.catches, into: &settings.pokedex, at: Date())
         pokedexWindow.refreshIfVisible()  // right after the round, even before the results are closed
-        let dayKey = roundDailyKey
-        let daily = dayKey != nil
-        let previousBest = dayKey.map { settings.dailyBest[$0] ?? 0 } ?? settings.bestCatchScore
+        let previousBest = settings.bestCatchScore
         let isNewBest = results.score > previousBest
         if isNewBest {
-            if let dayKey { settings.dailyBest[dayKey] = results.score } else { settings.bestCatchScore = results.score }
+            settings.bestCatchScore = results.score
         }
         save()
         let best = max(previousBest, results.score)
@@ -627,7 +610,7 @@ final class AppModel {
             guard let self else { return }
             let keepable = CatchGame.keepable(results.catches, ownPetCount: self.settings.pets.count,
                                               cap: Playground.maxOwnPets)
-            self.gameUI.showResults(results, best: best, isNewBest: isNewBest, keepable: keepable, daily: daily)
+            self.gameUI.showResults(results, best: best, isNewBest: isNewBest, keepable: keepable)
         }
     }
 
