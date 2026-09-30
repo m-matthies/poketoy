@@ -103,6 +103,7 @@ public struct CatchGame: Sendable {
     public private(set) var berriesLeft = CatchGame.berriesPerRound
     /// Overrides every catch chance (tests).
     var catchChance: Double?
+    var shinyOdds = CatchGame.shinyChance
     private var rng: SplitMix64
     private var nextSpawnIn = 0.5
     private var endRequested = false
@@ -159,7 +160,7 @@ public struct CatchGame: Sendable {
         let regulars = roster.filter { !$0.isLegendary }
         let pool = !legendaries.isEmpty && (regulars.isEmpty || rng.unit() < Self.legendaryChance) ? legendaries : regulars
         let spec = pool[min(Int(rng.unit() * Double(pool.count)), pool.count - 1)]
-        let shiny = spec.shinyPath != nil && rng.unit() < Self.shinyChance
+        let shiny = spec.shinyPath != nil && rng.unit() < shinyOdds
         return (spec, shiny)
     }
 

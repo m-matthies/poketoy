@@ -95,9 +95,11 @@ public struct BrainContext: Sendable {
     public var timeOfDay: TimeOfDay
     /// The system "Reduce motion" setting: calmer pets.
     public var reduceMotion: Bool
+    /// A wild Pokémon calmed by a berry: slow, and not afraid of the cursor.
+    public var calm: Bool
 
     public init(dt: Double, world: World, cursor: CGPoint, cursorMode: CursorMode, halfWidth: CGFloat,
-                animationFinished: Bool, timeOfDay: TimeOfDay = .day, reduceMotion: Bool = false) {
+                animationFinished: Bool, timeOfDay: TimeOfDay = .day, reduceMotion: Bool = false, calm: Bool = false) {
         self.dt = dt
         self.world = world
         self.cursor = cursor
@@ -106,6 +108,7 @@ public struct BrainContext: Sendable {
         self.animationFinished = animationFinished
         self.timeOfDay = timeOfDay
         self.reduceMotion = reduceMotion
+        self.calm = calm
     }
 }
 
@@ -149,6 +152,7 @@ public struct PetBrain: Sendable {
     private var sinceInteraction: Double = 0
     private var napRemaining: Double = 0
     private var timeOfDay: TimeOfDay = .day
+    private var calm = false
     /// Seconds left showing hearts on a stroked sleeping pet.
     private var sleepHeartsLeft: Double = 0
 
@@ -175,7 +179,7 @@ public struct PetBrain: Sendable {
         }
     }
 
-    private var speedFactor: CGFloat { personality == .wild ? 1.6 : 1 }
+    private var speedFactor: CGFloat { personality == .wild ? (calm ? 0.8 : 1.6) : 1 }
 
     // MARK: - Events
 
@@ -333,6 +337,7 @@ public struct PetBrain: Sendable {
     public mutating func update(_ ctx: BrainContext, body: inout Body) {
         sinceInteraction += ctx.dt
         timeOfDay = ctx.timeOfDay
+        calm = ctx.calm
 
         switch state {
         case .dragged:
@@ -449,7 +454,7 @@ public struct PetBrain: Sendable {
     // MARK: - Behaviors
 
     private func effectiveMode(_ ctx: BrainContext) -> CursorMode {
-        personality == .wild ? .flee : ctx.cursorMode
+        personality == .wild ? (ctx.calm ? .off : .flee) : ctx.cursorMode
     }
 
     /// Returns true if the cursor mode decided the movement for this tick.
@@ -513,11 +518,15 @@ public struct PetBrain: Sendable {
             return
         }
         let roll = rng.unit()
-        var jumpChance = personality == .wild ? 0.35 : (onActive ? 0.03 : 0.2)
+        var jumpChance = personality == .wild ? 0.5 : (onActive ? 0.03 : 0.2)
         if ctx.timeOfDay == .morning { jumpChance += 0.1 }
         if ctx.reduceMotion { jumpChance = 0 }
         if roll < jumpChance {
-            let options = reachable(from: body.position, ctx)
+            var options = reachable(from: body.position, ctx)
+            // Wild Pokémon like hopping between window tops.
+            if personality == .wild, options.contains(where: { $0.kind == .window }) {
+                options = options.filter { $0.kind == .window }
+            }
             if !options.isEmpty {
                 let pick = options[min(Int(rng.unit() * Double(options.count)), options.count - 1)]
                 launch(to: pick, x: pick.minX + CGFloat(rng.unit()) * pick.width, halfWidth: ctx.halfWidth, &body)

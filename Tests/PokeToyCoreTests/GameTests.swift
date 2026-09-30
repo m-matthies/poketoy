@@ -61,7 +61,7 @@ import Testing
         let result = playUntil(&playground, seconds: 3) { _, events in events.contains(.caught(petID: target.id)) }
         #expect(result.met)
         #expect(result.events.contains(.wildRemoved(petID: target.id)))
-        #expect(playground.game?.score == 125)
+        #expect(playground.game?.score == 175)  // hit 25 + catch 100 + first-throw bonus 50
         #expect(playground.game?.catches.map(\.displayName) == ["Pikachu"])
         #expect(playground.pet(target.id) == nil)
         #expect(playground.pet(ids[0])?.brain.script?.anim == .cheer)

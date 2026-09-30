@@ -21,6 +21,8 @@ public struct PetActor: Identifiable, Sendable {
     var leaving = false
     /// Where a leaving wild Pokémon walks to: just past the outer edge of all screens, decided once.
     var exitX: CGFloat?
+    /// Set while a flying wild Pokémon glides (no walking, no gravity).
+    var flight: Flight?
     var wasSleeping = false
 
     init(id: UUID, role: PetRole, metrics: PetMetrics, brain: PetBrain, body: Body, scale: CGFloat) {
@@ -121,6 +123,8 @@ public enum PlaygroundEvent: Equatable, Sendable {
     case emotion(petID: UUID, Emotion)
     /// A pet brought the fetch ball back.
     case fetched(petID: UUID)
+    /// The wild Pokémon just spawned is shiny (the app shows its shiny sprites).
+    case wildShiny(petID: UUID)
 }
 
 /// A social moment in progress between two pets.
@@ -174,6 +178,10 @@ public struct Playground: Sendable {
     var fetchRacers: Set<UUID> = []
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
+    var wildShiny: Set<UUID> = []
+    var calmedUntil: [UUID: Double] = [:]
+    /// Wild Pokémon that already broke out of a ball once (no first-throw bonus).
+    var brokeFreeOnce: Set<UUID> = []
     var paradeTimer = Playground.paradeInterval
     /// After a successful parade roll: seconds left to find a moment when a group is free.
     var paradeWindow: Double = 0
@@ -240,6 +248,9 @@ public struct Playground: Sendable {
         wildSpecs[id] = nil
         fleeBoost.remove(id)
         thrownByUser.remove(id)
+        wildShiny.remove(id)
+        calmedUntil[id] = nil
+        brokeFreeOnce.remove(id)
         strokes[id] = nil
         clickTimes[id] = nil
         annoyedUntil[id] = nil
@@ -332,12 +343,12 @@ public struct Playground: Sendable {
         lastWorld = world
         Self.decay(&pairCooldowns, dt)
         Self.decay(&knockCooldowns, dt)
-        for i in pets.indices where pets[i].visible {
+        for i in pets.indices where pets[i].visible && pets[i].flight == nil {
             updateBrain(i, dt: dt, world: world, cursor: cursor, cursorMode: cursorMode)
             if pets[i].brain.state == .landing, thrownByUser.remove(pets[i].id) != nil { feel(.dizzy, i) }
         }
         rulesBeforePhysics(dt: dt, world: world)
-        for i in pets.indices where pets[i].visible && pets[i].brain.state != .dragged {
+        for i in pets.indices where pets[i].visible && pets[i].brain.state != .dragged && pets[i].flight == nil {
             Physics.step(&pets[i].body, dt: CGFloat(dt), world: world)
         }
         stepItems(dt: dt, world: world)
@@ -375,7 +386,8 @@ public struct Playground: Sendable {
         let context = BrainContext(dt: dt, world: world, cursor: cursor,
                                    cursorMode: pet.role == .own ? cursorMode : .off,
                                    halfWidth: pet.halfWidth, animationFinished: finished,
-                                   timeOfDay: timeOfDay, reduceMotion: reduceMotion)
+                                   timeOfDay: timeOfDay, reduceMotion: reduceMotion,
+                                   calm: (calmedUntil[pet.id] ?? 0) > clock)
         pets[i].update(context)
     }
 
@@ -402,6 +414,7 @@ public struct Playground: Sendable {
             if items[i].kind.isHandheld, items[i].state == .free, items[i].body.isGrounded { items[i].age += dt }
             let landed = Physics.step(&items[i].body, dt: CGFloat(dt), world: world)
             if landed && items[i].state == .flying {
+                if items[i].kind.isBall { game?.registerMiss() }  // a ball that hit nothing breaks the combo
                 items[i].state = .fading(remaining: 1.5)  // a ball that hit nothing
             }
         }
