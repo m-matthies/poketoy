@@ -98,3 +98,9 @@ Pokédex window, daily run.
 ## Out of scope
 
 Online leaderboards, trading, item shops, sound.
+
+### Pokédex includes pets (added)
+
+- Species also enter the Pokédex when they become pets: adopted from the picker, kept from a catch
+  round, or evolved into; current pets are recorded at launch. `PokedexEntry.everOwned` marks them;
+  the window shows "current pet" / "former pet" and catch counts, and pets count toward completion.

@@ -79,4 +79,30 @@ import Testing
         let store = EvolutionStore(cacheDirectory: makeTempDirectory(), remoteBase: base)
         #expect(try await store.types(of: 16) == ["normal", "flying"])
     }
+
+    @Test func pokedexRecordsPets() {
+        var pokedex: [String: PokedexEntry] = [:]
+        Pokedex.recordPet(path: "0133", displayName: "Eevee", into: &pokedex, at: date(2026, 9, 1))
+        #expect(pokedex["0133"] == PokedexEntry(displayName: "Eevee", firstCaught: date(2026, 9, 1), count: 0,
+                                                shinyCaught: false, everOwned: true))
+        // A caught species that later becomes a pet keeps its catch history.
+        Pokedex.record([CatchRecord(petID: UUID(), path: "0025", displayName: "Pikachu", position: .zero)],
+                       into: &pokedex, at: date(2026, 9, 2))
+        Pokedex.recordPet(path: "0025/0000/0001", displayName: "Pikachu (Shiny)", into: &pokedex, at: date(2026, 9, 3))
+        #expect(pokedex["0025"] == PokedexEntry(displayName: "Pikachu", firstCaught: date(2026, 9, 2), count: 1,
+                                                shinyCaught: true, everOwned: true))
+    }
+
+    @Test func petsCountTowardCompletion() {
+        var pokedex: [String: PokedexEntry] = [:]
+        Pokedex.recordPet(path: "0001", displayName: "Mon 1", into: &pokedex, at: Date())
+        #expect(abs(Pokedex.completion(caught: pokedex, catalog: catalog) - 1.0 / 44) < 1e-9)
+    }
+
+    @Test func oldEntriesDecodeWithoutEverOwned() throws {
+        let json = #"{"displayName": "Pikachu", "firstCaught": 0, "count": 2, "shinyCaught": false}"#
+        let entry = try JSONDecoder().decode(PokedexEntry.self, from: Data(json.utf8))
+        #expect(!entry.everOwned)
+        #expect(entry.count == 2)
+    }
 }

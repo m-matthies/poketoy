@@ -62,6 +62,9 @@ final class AppModel {
     }
 
     func start() {
+        // Current pets belong in the Pokédex too (also covers pets from before it tracked them).
+        for record in settings.pets { recordInPokedex(record) }
+        settings.save(to: .standard)
         worldMonitor.start()
         for record in settings.pets {
             Task {
@@ -88,6 +91,7 @@ final class AppModel {
         guard settings.pets.count < Playground.maxOwnPets else { throw AppError.tooManyPets }
         let record = PetRecord(spritePath: entry.path, displayName: entry.displayName)
         settings.pets.append(record)
+        recordInPokedex(record)
         if settings.hidden { setHidden(false) }
         attach(record, sprites: sprites)
         save()
@@ -185,6 +189,7 @@ final class AppModel {
             settings.pets[index].spritePath = entry.path
             settings.pets[index].displayName = entry.displayName
             settings.pets[index].treatsEaten = 0
+            recordInPokedex(settings.pets[index])
             playground.replaceMetrics(of: id, with: PetMetrics(sprites: sprites))
             petViews[id]?.replaceSprites(sprites)
             petViews[id]?.flash()
@@ -254,6 +259,15 @@ final class AppModel {
         playground.throwBerry(from: point, velocity: velocity)
     }
 
+    private func recordInPokedex(_ pet: PetRecord) {
+        Pokedex.recordPet(path: pet.spritePath, displayName: pet.displayName, into: &settings.pokedex, at: Date())
+    }
+
+    /// Species keys (e.g. `0025`) of the current pets.
+    var currentPetSpecies: Set<String> {
+        Set(settings.pets.compactMap { Pokedex.key(forPath: $0.spritePath) })
+    }
+
     func showPokedex() {
         pokedexWindow.show()
     }
@@ -295,6 +309,7 @@ final class AppModel {
             let name = record.isShiny ? "\(record.displayName) (Shiny)" : record.displayName
             let pet = PetRecord(spritePath: record.path, displayName: name, position: record.position)
             settings.pets.append(pet)
+            recordInPokedex(pet)
             attach(pet, sprites: sprites)
         }
         save()

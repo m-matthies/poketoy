@@ -7,6 +7,7 @@ final class PokedexWindowController: NSWindowController, NSTableViewDataSource, 
     private unowned let model: AppModel
     private var rows: [(key: String, entry: PokedexEntry)] = []
     private var portraits: [String: NSImage] = [:]
+    private var currentPets: Set<String> = []
     private let header = NSTextField(labelWithString: "")
     private let table = NSTableView()
     private let dateFormatter: DateFormatter = {
@@ -63,7 +64,8 @@ final class PokedexWindowController: NSWindowController, NSTableViewDataSource, 
     func show() {
         rows = model.settings.pokedex.map { (key: $0.key, entry: $0.value) }
             .sorted { $0.entry.firstCaught > $1.entry.firstCaught }
-        header.stringValue = rows.isEmpty ? "No Pokémon caught yet — play the catch game!" : "\(rows.count) species caught"
+        currentPets = model.currentPetSpecies
+        header.stringValue = rows.isEmpty ? "No Pokémon yet — adopt or catch some!" : "\(rows.count) species"
         table.reloadData()
         NSApp.activate()
         showWindow(nil)
@@ -72,7 +74,7 @@ final class PokedexWindowController: NSWindowController, NSTableViewDataSource, 
             let catalog = await model.catalogForPokedex()
             guard !catalog.isEmpty else { return }
             let share = Pokedex.completion(caught: model.settings.pokedex, catalog: catalog)
-            header.stringValue = "\(rows.count) species caught — \(String(format: "%.1f", share * 100))% complete"
+            header.stringValue = "\(rows.count) species — \(String(format: "%.1f", share * 100))% complete"
         }
         for row in rows where portraits[row.key] == nil {
             let key = row.key
@@ -98,8 +100,15 @@ final class PokedexWindowController: NSWindowController, NSTableViewDataSource, 
         image.heightAnchor.constraint(equalToConstant: 40).isActive = true
         let name = NSTextField(labelWithString: (entry.shinyCaught ? "✦ " : "") + entry.displayName)
         name.font = .boldSystemFont(ofSize: 13)
-        let times = entry.count == 1 ? "once" : "\(entry.count) times"
-        let detail = NSTextField(labelWithString: "#\(key) · first caught \(dateFormatter.string(from: entry.firstCaught)) · \(times)")
+        var parts = ["#\(key)"]
+        if currentPets.contains(key) {
+            parts.append("current pet")
+        } else if entry.everOwned {
+            parts.append("former pet")
+        }
+        if entry.count > 0 { parts.append(entry.count == 1 ? "caught once" : "caught \(entry.count) times") }
+        parts.append("since \(dateFormatter.string(from: entry.firstCaught))")
+        let detail = NSTextField(labelWithString: parts.joined(separator: " · "))
         detail.textColor = .secondaryLabelColor
         detail.font = .systemFont(ofSize: 11)
         let text = NSStackView(views: [name, detail])
