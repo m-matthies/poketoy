@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var menus: MenuBuilder!
     private var statusItem: NSStatusItem?
+    private var feedShortcut: GlobalFeedShortcut?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
@@ -18,6 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
 
         model.start()
+
+        let feedShortcut = GlobalFeedShortcut { [unowned model] in model.feed() }
+        feedShortcut.start()
+        self.feedShortcut = feedShortcut
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

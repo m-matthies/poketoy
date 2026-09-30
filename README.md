@@ -21,8 +21,9 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   will jump all the way up to it — nap when ignored and wake up on their own.
 - Pets never walk through each other: they hop over, turn back, or start playing. Pets that meet greet each other, play tag or play-fight. Pairs that play a lot become **friends** and then **best friends**,
   who seek each other out and nap side by side (Pets → *name* shows a pet's best friend).
-- **Feed** (⌘B) drops an apple or Oran Berry at a random spot on a screen with pets; the nearest pet runs
-  over to eat it. Treats can be dragged and thrown too; uneaten ones spoil after 90 seconds.
+- **Feed** (⌘B — works from any app; the app you're in still gets ⌘B too) drops an apple or Oran Berry at a
+  random spot on a screen with pets; the nearest pet runs over to eat it. The system-wide ⌘B needs
+  Accessibility permission: PokeToy asks on first launch (System Settings → Privacy & Security → Accessibility). Treats can be dragged and thrown too; uneaten ones spoil after 90 seconds.
 - **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run across the screen. Press, flick and release to throw
   Poké Balls. Hits score 25, catches 100. Afterwards, pick which catches to keep as pets. Esc or the **End** button ends
   the round early.
