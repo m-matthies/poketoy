@@ -127,3 +127,14 @@ import Testing
         #expect(game.score == 175)
     }
 }
+
+@Suite struct KeepChoiceTests {
+    @Test func nothingIsKeptUntilTicked() {
+        #expect(CatchGame.tickable(ticked: [], count: 3, keepable: 2) == [true, true, true])
+    }
+
+    @Test func atTheLimitOnlyTickedOnesStayChangeable() {
+        #expect(CatchGame.tickable(ticked: [0, 2], count: 3, keepable: 2) == [true, false, true])
+        #expect(CatchGame.tickable(ticked: [], count: 2, keepable: 0) == [false, false])
+    }
+}

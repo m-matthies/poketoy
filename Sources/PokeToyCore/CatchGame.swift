@@ -257,6 +257,12 @@ public struct CatchGame: Sendable {
         return Int((Double(base) * rarity * (multiplier ?? comboMultiplier)).rounded())
     }
 
+    /// Which of `count` catches can be ticked (or unticked) to keep: all while fewer than `keepable` are ticked,
+    /// then only the ticked ones.
+    public static func tickable(ticked: Set<Int>, count: Int, keepable: Int) -> [Bool] {
+        (0..<count).map { ticked.contains($0) || ticked.count < keepable }
+    }
+
     /// How many of `catches` can still become pets without exceeding `cap`.
     public static func keepable(_ catches: [CatchRecord], ownPetCount: Int, cap: Int) -> Int {
         max(0, min(catches.count, cap - ownPetCount))
