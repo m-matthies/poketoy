@@ -266,6 +266,7 @@ public struct Playground: Sendable {
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).
     mutating func rulesBeforePhysics(dt: Double, world: World) {
+        gameRulesBeforePhysics(dt: dt, world: world)
         socialRules(dt: dt, world: world)
         feedingRules(world: world)
     }
@@ -273,6 +274,7 @@ public struct Playground: Sendable {
     /// Rules that react to where things ended up (collisions, Poké Ball hits).
     mutating func rulesAfterPhysics(dt: Double, world: World) {
         collisionRules(world: world)
+        gameRulesAfterPhysics(dt: dt)
     }
 
     private mutating func updateBrain(_ i: Int, dt: Double, world: World, cursor: CGPoint, cursorMode: CursorMode) {
