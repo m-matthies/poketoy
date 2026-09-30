@@ -173,6 +173,8 @@ public struct Playground: Sendable {
     /// Pets racing for the fetch ball.
     var fetchRacers: Set<UUID> = []
     var windowMotion: [Int: WindowMotion] = [:]
+    var parades: [Parade] = []
+    var paradeTimer = Playground.paradeInterval
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -204,6 +206,7 @@ public struct Playground: Sendable {
 
     func inMoment(_ id: UUID) -> Bool {
         moments.contains { $0.a == id || $0.b == id }
+            || parades.contains { $0.leader == id || $0.followers.contains(id) }
     }
 
     // MARK: - Pets

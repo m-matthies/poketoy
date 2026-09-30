@@ -7,6 +7,7 @@ extension Playground {
     static let followInterval = 8.0
 
     mutating func socialRules(dt: Double, world: World) {
+        paradeRules(dt: dt)
         guard game == nil else { return }
         advanceMoments(dt: dt, world: world)
         startEncounters(dt: dt)
