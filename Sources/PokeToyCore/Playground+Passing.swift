@@ -59,7 +59,7 @@ extension Playground {
         let goalIsPast = walkGoal(of: i).map { ($0 - blockerX) * direction > 0 } ?? false
         let landing = blockerX + direction * (pets[i].halfWidth + pets[j].halfWidth + 6)
         let surface = pets[i].body.surfaceID.flatMap { world.surface(id: $0, containingX: pets[i].body.position.x) }
-        if goalIsPast, let surface,
+        if goalIsPast, !reduceMotion, let surface,
            landing >= surface.minX + pets[i].halfWidth, landing <= surface.maxX - pets[i].halfWidth,
            scripted || rng.unit() < 0.5 {
             pets[i].hop(to: landing, on: surface)

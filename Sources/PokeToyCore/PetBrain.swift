@@ -70,6 +70,19 @@ public struct Script: Equatable, Sendable {
     }
 }
 
+/// Pets are sleepy at night and lively in the morning.
+public enum TimeOfDay: Equatable, Sendable {
+    case morning, day, night
+
+    public init(hour: Int) {
+        switch hour {
+        case 6..<10: self = .morning
+        case 10..<22: self = .day
+        default: self = .night
+        }
+    }
+}
+
 public struct BrainContext: Sendable {
     public var dt: Double
     public var world: World
@@ -79,15 +92,20 @@ public struct BrainContext: Sendable {
     public var halfWidth: CGFloat
     /// The current pose's non-looping animation has played to the end.
     public var animationFinished: Bool
+    public var timeOfDay: TimeOfDay
+    /// The system "Reduce motion" setting: calmer pets.
+    public var reduceMotion: Bool
 
     public init(dt: Double, world: World, cursor: CGPoint, cursorMode: CursorMode, halfWidth: CGFloat,
-                animationFinished: Bool) {
+                animationFinished: Bool, timeOfDay: TimeOfDay = .day, reduceMotion: Bool = false) {
         self.dt = dt
         self.world = world
         self.cursor = cursor
         self.cursorMode = cursorMode
         self.halfWidth = halfWidth
         self.animationFinished = animationFinished
+        self.timeOfDay = timeOfDay
+        self.reduceMotion = reduceMotion
     }
 }
 
@@ -128,6 +146,7 @@ public struct PetBrain: Sendable {
     private var rng: SplitMix64
     private var sinceInteraction: Double = 0
     private var napRemaining: Double = 0
+    private var timeOfDay: TimeOfDay = .day
 
     public init(seed: UInt64, personality: Personality = .pet) {
         rng = SplitMix64(seed: seed)
@@ -276,10 +295,16 @@ public struct PetBrain: Sendable {
     }
 
     @discardableResult
-    public mutating func fallAsleep(body: inout Body) -> Bool {
+    public mutating func fallAsleep(body: inout Body, indefinitely: Bool = false) -> Bool {
         guard body.isGrounded, isFree else { return false }
         enterSleep(&body)
+        if indefinitely { napRemaining = .infinity }
         return true
+    }
+
+    /// A pet that is already asleep keeps sleeping until woken.
+    public mutating func sleepIndefinitely() {
+        if state == .sleep { napRemaining = .infinity }
     }
 
     /// Jumps onto `surface` near `x` if the pet is free (or only pursuing something at priority 1).
@@ -302,6 +327,7 @@ public struct PetBrain: Sendable {
 
     public mutating func update(_ ctx: BrainContext, body: inout Body) {
         sinceInteraction += ctx.dt
+        timeOfDay = ctx.timeOfDay
 
         switch state {
         case .dragged:
@@ -457,7 +483,8 @@ public struct PetBrain: Sendable {
     }
 
     private mutating func decideNext(_ ctx: BrainContext, _ body: inout Body) {
-        if personality == .pet && ctx.cursorMode == .off && sinceInteraction > Self.sleepAfter {
+        let sleepAfter = ctx.timeOfDay == .night ? 20 : Self.sleepAfter
+        if personality == .pet && ctx.cursorMode == .off && sinceInteraction > sleepAfter {
             enterSleep(&body)
             return
         }
@@ -472,7 +499,9 @@ public struct PetBrain: Sendable {
             return
         }
         let roll = rng.unit()
-        let jumpChance = personality == .wild ? 0.35 : (onActive ? 0.03 : 0.2)
+        var jumpChance = personality == .wild ? 0.35 : (onActive ? 0.03 : 0.2)
+        if ctx.timeOfDay == .morning { jumpChance += 0.1 }
+        if ctx.reduceMotion { jumpChance = 0 }
         if roll < jumpChance {
             let options = reachable(from: body.position, ctx)
             if !options.isEmpty {
@@ -490,7 +519,9 @@ public struct PetBrain: Sendable {
             guard hi > lo else { enterIdle(&body); return }
             target = lo + CGFloat(rng.unit()) * (hi - lo)
         }
-        let speed = Self.walkSpeed * speedFactor
+        var speed = Self.walkSpeed * speedFactor
+        if ctx.timeOfDay == .morning { speed *= 1.2 }
+        if ctx.reduceMotion { speed *= 0.7 }
         state = .walk(targetX: target, speed: speed)
         walk(toward: target, speed: speed, dt: ctx.dt, &body)
     }
@@ -560,7 +591,8 @@ public struct PetBrain: Sendable {
 
     private mutating func enterSleep(_ body: inout Body) {
         body.velocity.dx = 0
-        napRemaining = Self.napLength.lowerBound + rng.unit() * (Self.napLength.upperBound - Self.napLength.lowerBound)
+        let naps = timeOfDay == .night ? 120.0...300.0 : Self.napLength
+        napRemaining = naps.lowerBound + rng.unit() * (naps.upperBound - naps.lowerBound)
         state = .sleep
         setPose(.sleep, .down)
     }

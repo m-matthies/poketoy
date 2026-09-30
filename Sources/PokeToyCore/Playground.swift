@@ -65,8 +65,8 @@ public struct PetActor: Identifiable, Sendable {
     }
 
     @discardableResult
-    mutating func fallAsleep() -> Bool {
-        brain.fallAsleep(body: &body)
+    mutating func fallAsleep(indefinitely: Bool = false) -> Bool {
+        brain.fallAsleep(body: &body, indefinitely: indefinitely)
     }
 
     @discardableResult
@@ -175,6 +175,11 @@ public struct Playground: Sendable {
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
     var paradeTimer = Playground.paradeInterval
+    public var timeOfDay: TimeOfDay = .day
+    /// The system "Reduce motion" setting.
+    public var reduceMotion = false
+    var userIdle: Double = 0
+    var userAway = false
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -330,6 +335,7 @@ public struct Playground: Sendable {
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).
     mutating func rulesBeforePhysics(dt: Double, world: World) {
+        awayRules()
         shakeRules(world: world)
         gameRulesBeforePhysics(dt: dt, world: world)
         socialRules(dt: dt, world: world)
@@ -351,7 +357,8 @@ public struct Playground: Sendable {
             && pet.poseToken == pet.brain.pose.token
         let context = BrainContext(dt: dt, world: world, cursor: cursor,
                                    cursorMode: pet.role == .own ? cursorMode : .off,
-                                   halfWidth: pet.halfWidth, animationFinished: finished)
+                                   halfWidth: pet.halfWidth, animationFinished: finished,
+                                   timeOfDay: timeOfDay, reduceMotion: reduceMotion)
         pets[i].update(context)
     }
 

@@ -56,7 +56,7 @@ extension Playground {
     /// The friend at the end with more room ahead leads, so followers start out behind it.
     @discardableResult
     mutating func startParade(from i: Int) -> Bool {
-        guard game == nil, isParadeReady(i), let surfaceID = pets[i].body.surfaceID,
+        guard game == nil, !reduceMotion, isParadeReady(i), let surfaceID = pets[i].body.surfaceID,
               let surface = lastWorld.surface(id: surfaceID, containingX: pets[i].body.position.x) else { return false }
         let candidate = pets[i].id
         var group = [i] + pets.indices.filter { j in
