@@ -38,10 +38,10 @@ import Testing
 
     @Test func dailyRosterHasOneLegendaryAndBaseFormsOnly() {
         let roster = DailyChallenge.roster(from: catalog, seed: 20_260_930)
-        #expect(roster.count == 8)
+        #expect(roster.count == 13)
         #expect(roster.filter { Legendaries.isLegendary(dex: Evolution.dexNumber(of: $0.path) ?? 0) }.count == 1)
         #expect(roster.allSatisfy { !$0.path.contains("/") && $0.isComplete })
-        #expect(Set(roster.map(\.path)).count == 8)
+        #expect(Set(roster.map(\.path)).count == 13)
     }
 
     @Test func pokedexRecordsCatches() {

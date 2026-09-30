@@ -81,3 +81,12 @@ public enum Pokedex {
         return Double(species.intersection(caught.keys).count) / Double(species.count)
     }
 }
+
+extension Pokedex {
+    /// `entries` shuffled, species not yet in the Pokédex first.
+    public static func newFirst(_ entries: [CatalogEntry], pokedex: [String: PokedexEntry],
+                                using rng: inout some RandomNumberGenerator) -> [CatalogEntry] {
+        let isKnown = { (entry: CatalogEntry) in key(forPath: entry.path).map { pokedex[$0] != nil } ?? false }
+        return entries.filter { !isKnown($0) }.shuffled(using: &rng) + entries.filter(isKnown).shuffled(using: &rng)
+    }
+}

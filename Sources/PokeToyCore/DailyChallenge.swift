@@ -2,7 +2,8 @@ import Foundation
 
 /// The same catch round for everyone on a given day.
 public enum DailyChallenge {
-    public static let regulars = 7
+    /// Regular Pokémon per round (plus one legendary): enough that a 60 s round rarely sees the same one twice.
+    public static let regulars = 12
 
     /// Days are counted on the Gregorian calendar in the local time zone, whatever calendar the user prefers.
     public static var gregorian: Calendar {
@@ -23,7 +24,7 @@ public enum DailyChallenge {
         return String(format: "%04d-%02d-%02d", day.year ?? 0, day.month ?? 0, day.day ?? 0)
     }
 
-    /// Seven regular Pokémon plus one legendary, picked from the complete base forms in a fixed order.
+    /// Twelve regular Pokémon plus one legendary, picked from the complete base forms in a fixed order.
     public static func roster(from catalog: [CatalogEntry], seed: UInt64) -> [CatalogEntry] {
         let base = catalog.filter { $0.isComplete && !$0.path.contains("/") }.sorted { $0.path < $1.path }
         var rng = SplitMix64(seed: seed)

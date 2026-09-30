@@ -22,7 +22,7 @@ aiming arc, and a daily challenge.
   (Gen 1–9). Offline-safe; no PokeAPI call needed.
 - `WildSpec` gains `isLegendary: Bool` and `shinyPath: String?` (SpriteCollab `<dex>/0000/0001`
   when the catalog has it; its sprites are loaded with the roster).
-- Roster: 7 regular complete Pokémon plus 1 legendary (random complete legendary), when available.
+- Roster: 12 regular complete Pokémon plus 1 legendary (random complete legendary), when available.
 - Spawning: a legendary with probability 0.05 (if the roster has one), otherwise a random regular.
   Each spawn is shiny with probability 1/64 when its spec has a shiny path.
 - `PlaygroundEvent.wildSpawned` gains `shiny: Bool` so the app shows the shiny sprites; shinies
@@ -37,7 +37,7 @@ aiming arc, and a daily challenge.
   Balls. A ball that lands without hitting anything resets the combo and the tier to Poké Ball.
 - Combo multiplier on points: × (1 + 0.25 × (combo − 1)), capped at × 2.
 - **First-throw bonus:** catching a Pokémon with the first ball that hit it (it never broke free) +50.
-- **Razz Berries:** 3 per round. Holding ⇧ Shift while releasing a throw throws a berry instead of a
+- **Razz Berries:** 3 per round. A throw started with ⌃-click or a right-click (or released with ⇧ held) is a berry instead of a
   ball. A berry that hits a wild calms it for 8 s: it moves at half speed, stops fleeing the cursor,
   and gets +0.15 catch chance. A calmed wild shows a 😊 bubble. The HUD shows berries left.
 
@@ -59,7 +59,7 @@ aiming arc, and a daily challenge.
 
 ## Daily challenge
 
-- `DailyChallenge.seed(for date:)` = yyyymmdd; `DailyChallenge.roster(from catalog:seed:)` picks 7
+- `DailyChallenge.seed(for date:)` = yyyymmdd; `DailyChallenge.roster(from catalog:seed:)` picks 12
   regular + 1 legendary deterministically from the complete catalog entries sorted by path.
 - The game RNG uses the same seed, so spawn order and catch rolls match for everyone: the roster is
   sorted by path, and spawns, placement and catch rolls draw from separate streams that always consume
@@ -119,3 +119,14 @@ Online leaderboards, trading, item shops, sound.
 - ⇧ with no berries left throws a ball.
 - Shiny pets remember they are shiny (`PetRecord.isShiny`) and evolve into the shiny form when
   SpriteCollab has it.
+
+### Varied wild Pokémon (added)
+
+- Rosters have 12 regular Pokémon plus a legendary; normal rounds top up to at least 10 when some fail to
+  load and pick species not yet in the Pokédex first (`Pokedex.newFirst`). The daily roster stays the same
+  for everyone.
+- Spawning draws regulars from a bag: each appears once before the roster repeats, never twice in a row, and
+  a species caught this round (any form) doesn't spawn again unless everything has been caught.
+- Spawn places: a third walk in from a screen edge; the rest pop up at a random spot on the screen's floor or
+  (half of those, when there are any) on top of a window on that screen. Flyers start at a random x too.
+- Berries: ⌃-click or right-click (two-finger click) starts a berry throw; ⇧ at release still works.

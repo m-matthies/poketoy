@@ -74,19 +74,44 @@ extension Playground {
 
     private mutating func spawnWild(_ spec: WildSpec, shiny: Bool, world: World) {
         guard !world.screens.isEmpty else { return }
-        let pick = game?.randomUnit() ?? 0
-        let screen = world.screens[min(Int(pick * Double(world.screens.count)), world.screens.count - 1)]
-        let fromLeft = (game?.randomUnit() ?? 0) < 0.5
-        let x = fromLeft ? screen.frame.minX + 40 : screen.frame.maxX - 40
+        // The same rolls for every spawn, whatever the Pokémon and the screen, so seeded rounds stay in step.
+        let rolls = (0..<5).map { _ in CGFloat(game?.randomUnit() ?? 0.5) }
+        let (screenRoll, sideRoll, heightRoll, placeRoll, spotRoll) = (rolls[0], rolls[1], rolls[2], rolls[3], rolls[4])
+        let screen = world.screens[min(Int(screenRoll * CGFloat(world.screens.count)), world.screens.count - 1)]
+        let fromLeft = sideRoll < 0.5
+        let margin: CGFloat = 60
+        var x = fromLeft ? screen.frame.minX + 40 : screen.frame.maxX - 40
         var y = screen.visibleFrame.minY + 1
         var flight: Flight?
-        let heightRoll = CGFloat(game?.randomUnit() ?? 0.5)  // drawn for every spawn, flyer or not
         if spec.canFly {
-            // Glide at a random height between 150 pt above the floor and 70% of the screen.
+            // Glide at a random height between 150 pt above the floor and 70% of the screen, from anywhere across it.
             let low = screen.visibleFrame.minY + 150
             let high = max(low, screen.frame.minY + screen.frame.height * 0.7)
             y = low + heightRoll * (high - low)
+            if placeRoll >= 1.0 / 3 {
+                x = screen.frame.minX + margin + spotRoll * max(0, screen.frame.width - 2 * margin)
+            }
             flight = Flight(baseY: y, direction: fromLeft ? 1 : -1)
+        } else if placeRoll >= 1.0 / 3 {
+            // Two times in three it pops up somewhere on the screen's floor or on top of a window there,
+            // otherwise it walks in from an edge.
+            let spots = world.surfaces.filter {
+                $0.width >= 80 && $0.y >= screen.frame.minY && $0.y < screen.frame.maxY
+                    && $0.maxX > screen.frame.minX + margin && $0.minX < screen.frame.maxX - margin
+            }.sorted { ($0.kind == .floor ? 0 : 1, $0.y, $0.minX) < ($1.kind == .floor ? 0 : 1, $1.y, $1.minX) }
+            if !spots.isEmpty {
+                // Window tops get half of these spawns when there are any, the floor the rest.
+                let windows = spots.filter { $0.kind == .window }, floors = spots.filter { $0.kind == .floor }
+                let t = (placeRoll - 1.0 / 3) * 1.5  // 0..<1
+                let split = !windows.isEmpty && !floors.isEmpty
+                let group = split ? (t >= 0.5 ? windows : floors) : (windows.isEmpty ? floors : windows)
+                let within = split ? (t >= 0.5 ? t - 0.5 : t) * 2 : t
+                let surface = group[max(0, min(Int(within * CGFloat(group.count)), group.count - 1))]
+                let lo = max(surface.minX + 20, screen.frame.minX + margin)
+                let hi = min(surface.maxX - 20, screen.frame.maxX - margin)
+                x = lo + spotRoll * max(0, hi - lo)
+                y = surface.y + 1
+            }
         }
         let id = addPet(role: .wild, metrics: spec.metrics, at: CGPoint(x: x, y: y))
         pets[pets.count - 1].lifetime = game?.wildLifetime() ?? CatchGame.lifetime.lowerBound

@@ -110,6 +110,11 @@ public struct CatchGame: Sendable {
     private var placeRNG: SplitMix64
     private var rollRNG: SplitMix64
     private var nextSpawnIn = 0.5
+    /// Regular Pokémon still to appear before the roster starts over, so a round rarely repeats one.
+    private var bag: [String] = []
+    private var lastSpawned: String?
+    /// Species caught this round; they don't come back.
+    private var caughtSpecies: Set<String> = []
     private var endRequested = false
 
     public init(roster: [WildSpec], seed: UInt64) {
@@ -156,7 +161,8 @@ public struct CatchGame: Sendable {
     }
 
     /// A wild Pokémon to spawn this step, if one is due and there is room: legendaries about 5% of the time,
-    /// and 1 in 64 is shiny when it has shiny sprites.
+    /// and 1 in 64 is shiny when it has shiny sprites. Every regular appears once before any comes back, never
+    /// twice in a row, and caught species don't return (unless everything has been caught).
     public mutating func spawn(dt: Double, wildCount: Int) -> (spec: WildSpec, shiny: Bool)? {
         guard isPlaying, !roster.isEmpty else { return nil }
         nextSpawnIn -= dt
@@ -164,10 +170,25 @@ public struct CatchGame: Sendable {
         nextSpawnIn = Self.random(in: Self.spawnInterval, &spawnRNG)
         // Always the same three rolls per spawn, whatever the roster offers.
         let legendRoll = spawnRNG.unit(), pickRoll = spawnRNG.unit(), shinyRoll = spawnRNG.unit()
-        let legendaries = roster.filter(\.isLegendary)
+        let legendaries = roster.filter { $0.isLegendary && !isCaught($0.path) }
         let regulars = roster.filter { !$0.isLegendary }
-        let pool = !legendaries.isEmpty && (regulars.isEmpty || legendRoll < Self.legendaryChance) ? legendaries : regulars
-        let spec = pool[min(Int(pickRoll * Double(pool.count)), pool.count - 1)]
+        bag.removeAll(where: isCaught)
+        if bag.isEmpty {
+            let fresh = regulars.filter { !isCaught($0.path) }.map(\.path)
+            bag = fresh.isEmpty && legendaries.isEmpty ? regulars.map(\.path) : fresh
+        }
+        let spec: WildSpec
+        if !legendaries.isEmpty && (bag.isEmpty || legendRoll < Self.legendaryChance) {
+            spec = legendaries[Self.index(pickRoll, legendaries.count)]
+        } else if !bag.isEmpty {
+            var i = Self.index(pickRoll, bag.count)
+            if bag.count > 1 && bag[i] == lastSpawned { i = (i + 1) % bag.count }  // just refilled: not the same again
+            let path = bag.remove(at: i)
+            spec = regulars.first { $0.path == path }!
+        } else {
+            spec = roster[Self.index(pickRoll, roster.count)]  // only caught legendaries: let them come back
+        }
+        lastSpawned = spec.path
         let shiny = spec.shinyPath != nil && shinyRoll < shinyOdds
         return (spec, shiny)
     }
@@ -225,6 +246,7 @@ public struct CatchGame: Sendable {
         score += points(Self.catchPoints, isLegendary: isLegendary, isShiny: record.isShiny, multiplier: multiplier)
         if firstThrow { score += Self.firstThrowBonus }
         catches.append(record)
+        if let species = Pokedex.key(forPath: record.path) { caughtSpecies.insert(species) }
     }
 
     /// Base points × 3 for legendaries × 2 for shinies × the combo multiplier.
@@ -236,6 +258,14 @@ public struct CatchGame: Sendable {
     /// How many of `catches` can still become pets without exceeding `cap`.
     public static func keepable(_ catches: [CatchRecord], ownPetCount: Int, cap: Int) -> Int {
         max(0, min(catches.count, cap - ownPetCount))
+    }
+
+    private func isCaught(_ path: String) -> Bool {
+        Pokedex.key(forPath: path).map(caughtSpecies.contains) ?? false
+    }
+
+    private static func index(_ roll: Double, _ count: Int) -> Int {
+        min(Int(roll * Double(count)), count - 1)
     }
 
     private static func random(in range: ClosedRange<Double>, _ rng: inout SplitMix64) -> Double {

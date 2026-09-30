@@ -395,8 +395,12 @@ final class AppModel {
         petViews[record.id] = view
     }
 
-    /// Up to 7 regular Pokémon plus a legendary (base forms), with shiny sprites when SpriteCollab has them and
-    /// flying types from PokeAPI. Offline, fills up with Pokémon already on disk.
+    /// A normal round gets at least this many different wild Pokémon when they can be loaded.
+    private static let minimumRoster = 10
+
+    /// 12 regular Pokémon plus a legendary (base forms; in a normal round, species not yet in the Pokédex first),
+    /// with shiny sprites when SpriteCollab has them and flying types from PokeAPI. A normal round tops up to at
+    /// least 10 with more picks, then (offline) with Pokémon already on disk.
     private func loadRoster(daily: Bool, seed: UInt64) async -> [WildSpec] {
         let store = self.store, evolutions = self.evolutionStore
         // Keep loading short: the overlay captures the mouse meanwhile.
@@ -405,24 +409,33 @@ final class AppModel {
         let pending = gameUI.pendingCatchPaths
         wildSprites = wildSprites.filter { pending.contains($0.key) }
         let picks: [CatalogEntry]
+        var spares: [CatalogEntry] = []
         if daily {
             picks = DailyChallenge.roster(from: catalog, seed: seed)
         } else {
             let base = catalog.filter { $0.isComplete && !$0.path.contains("/") }
-            let legendaries = base.filter { Legendaries.isLegendary(path: $0.path) }
-            let regular = base.filter { !Legendaries.isLegendary(path: $0.path) }
-            picks = Array(regular.shuffled().prefix(DailyChallenge.regulars)) + Array(legendaries.shuffled().prefix(1))
+            var rng = SystemRandomNumberGenerator()
+            let legendaries = Pokedex.newFirst(base.filter { Legendaries.isLegendary(path: $0.path) },
+                                               pokedex: settings.pokedex, using: &rng)
+            let regular = Pokedex.newFirst(base.filter { !Legendaries.isLegendary(path: $0.path) },
+                                           pokedex: settings.pokedex, using: &rng)
+            picks = Array(regular.prefix(DailyChallenge.regulars)) + Array(legendaries.prefix(1))
+            spares = Array(regular.dropFirst(DailyChallenge.regulars).prefix(Self.minimumRoster))
         }
         var loaded = await loadWild(picks)
         if daily {
             // Everyone's round is the same only with the full roster: no substitutes.
             guard !picks.isEmpty, loaded.count == picks.count else { return [] }
-        } else if loaded.count < 3 {
-            // Offline or unlucky: fill up with Pokémon already on disk (the bundled Pikachu is always there).
+        } else if loaded.count < Self.minimumRoster {
+            // Some didn't load in time: try a few more picks, then fill up with Pokémon already on disk
+            // (the bundled Pikachu is always there).
+            if loaded.count > 0, !spares.isEmpty {
+                loaded += await loadWild(Array(spares.prefix(Self.minimumRoster - loaded.count + 2)))
+            }
             let names = Dictionary(catalog.map { ($0.path, $0.displayName) }, uniquingKeysWith: { first, _ in first })
             let have = Set(loaded.map(\.entry.path))
             let cached = await store.cachedSpritePaths().filter { !have.contains($0) && !$0.contains("/") }
-                .shuffled().prefix(8 - loaded.count)
+                .shuffled().prefix(max(0, Self.minimumRoster - loaded.count))
             loaded += await loadWild(cached.map {
                 CatalogEntry(path: $0, displayName: names[$0] ?? ($0 == "0025" ? "Pikachu" : "Pokémon #\($0)"))
             })
@@ -506,6 +519,7 @@ final class AppModel {
                     view.show()
                     petViews[id] = view
                 }
+                if let pet = playground.pet(id) { gameUI.addEffect(.flash, at: pet.body.position) }  // it pops up
             case .wildShiny(let id):
                 // A shiny: swap in its shiny sprites and make it sparkle.
                 if let path = wildPaths[id], let shinyPath = rosterSpecs[path]?.shinyPath,

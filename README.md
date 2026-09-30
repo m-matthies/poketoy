@@ -38,9 +38,11 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   release to throw; a dotted arc shows where it will go. Hits score 25, catches 100; **legendaries** (rare) are worth 3×,
   **shinies** (1 in 64, they sparkle) 2×, and consecutive hits build a **combo** (up to 2× points) that upgrades your ball to
   a **Great Ball** after 3 hits and an **Ultra Ball** after 5 (better catch chances) — a miss resets it. Catching with the
-  first ball that hit is worth a +50 bonus. Hold **⇧** while releasing to throw one of your 3 **Razz Berries**: it calms a
+  first ball that hit is worth a +50 bonus. **⌃-click** (or right-click) to throw one of your 3 **Razz Berries**: it calms a
   wild Pokémon (slower, unafraid, easier to catch). Afterwards, pick which catches to keep as pets. Esc or the **End**
   button ends the round early.
+- Each round brings at least 10 different wild Pokémon, species you don't have yet first; they walk in from the screen
+  edges or pop up anywhere on the floor or on top of windows, and one you've caught doesn't come back that round.
 - **Daily Challenge**: the same Pokémon and the same round for everyone today, with its own best score (needs a connection).
 - **Pokédex…** lists every species you've caught or kept as a pet — current and former pets included (✦ for shinies) — and
   how complete your collection is.

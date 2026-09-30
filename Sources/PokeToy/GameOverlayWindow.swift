@@ -30,6 +30,8 @@ final class GameView: NSView {
     private let showsHUD: Bool
     private var drag = DragTracker()
     private var holding = false
+    /// This throw is a Razz Berry: it started with ⌃-click or a right-click (two-finger click).
+    private var holdingBerry = false
     private var lastDirty: [NSRect] = []
 
     init(model: AppModel, controller: GameController, showsHUD: Bool) {
@@ -65,9 +67,7 @@ final class GameView: NSView {
             model.endCatchGame()
             return
         }
-        holding = true
-        let point = NSEvent.mouseLocation
-        drag.begin(at: point, objectPosition: point)
+        grab(berry: event.modifierFlags.contains(.control))
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -76,21 +76,50 @@ final class GameView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        release(berry: event.modifierFlags.contains(.shift))
+    }
+
+    // A right-click (or two-finger click) throws a berry too.
+    override func rightMouseDown(with event: NSEvent) {
+        grab(berry: true)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        mouseDragged(with: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        release(berry: false)
+    }
+
+    private func grab(berry: Bool) {
+        holding = true
+        holdingBerry = berry
+        let point = NSEvent.mouseLocation
+        drag.begin(at: point, objectPosition: point)
+    }
+
+    /// Throws what's held: a Razz Berry for a ⌃-click, right-click or ⇧ release (while berries are left), else a ball.
+    private func release(berry shiftDown: Bool) {
         guard holding else { return }
         holding = false
+        let berry = holdingBerry || shiftDown
+        holdingBerry = false
         let point = NSEvent.mouseLocation
         let start = CGPoint(x: point.x, y: point.y - ballSize / 2)
         let velocity = drag.releaseVelocity(cap: 2200)
-        if event.modifierFlags.contains(.shift), (model.playground.game?.berriesLeft ?? 0) > 0 {
-            model.throwBerry(from: start, velocity: velocity)  // ⇧ throws a Razz Berry
+        if berry, (model.playground.game?.berriesLeft ?? 0) > 0 {
+            model.throwBerry(from: start, velocity: velocity)
         } else {
             model.throwBall(from: start, velocity: velocity)
         }
     }
 
-    /// What the held item will be: a berry while ⇧ is down (and berries are left), else the current ball.
+    /// What the held item will be: a berry for a ⌃-click, right-click or while ⇧ is down (and berries are left),
+    /// else the current ball.
     private var heldKind: ItemKind {
-        if NSEvent.modifierFlags.contains(.shift), (model.playground.game?.berriesLeft ?? 0) > 0 { return .razzBerry }
+        let berry = holdingBerry || NSEvent.modifierFlags.contains(.shift)
+        if berry, (model.playground.game?.berriesLeft ?? 0) > 0 { return .razzBerry }
         return model.playground.game?.ballTier.itemKind ?? .pokeBall
     }
 
@@ -239,7 +268,7 @@ final class GameView: NSView {
                 }
                 let combo = game.combo > 1 ? " · combo ×\(game.combo)" : ""
                 text = "⏱ \(Int(remaining.rounded(.up)))   ★ \(game.score)   ◓ \(game.catches.count)   "
-                    + "\(ball)\(combo)   Razz ×\(game.berriesLeft) (⇧)"
+                    + "\(ball)\(combo)   Razz ×\(game.berriesLeft) (⌃-click)"
             case .finished:
                 return nil
             }
