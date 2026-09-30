@@ -48,7 +48,8 @@ final class AppModel {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PokeToy", isDirectory: true)
         store = SpriteStore(cacheDirectory: caches,
-                            bundledSprites: Bundle.main.resourceURL?.appendingPathComponent("Sprites", isDirectory: true))
+                            bundledSprites: Bundle.main.resourceURL?.appendingPathComponent("Sprites", isDirectory: true),
+                            bundledPortraits: Bundle.main.resourceURL?.appendingPathComponent("Portraits", isDirectory: true))
         evolutionStore = EvolutionStore(cacheDirectory: caches.appendingPathComponent("pokeapi", isDirectory: true))
     }
 

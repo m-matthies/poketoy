@@ -12,6 +12,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/PokeToy" "$APP/Contents/MacOS/PokeToy"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp -R Resources/Sprites "$APP/Contents/Resources/Sprites"
+cp -R Resources/Portraits "$APP/Contents/Resources/Portraits"
 
 ICONSET="$(mktemp -d)/AppIcon.iconset"
 swift scripts/make-icon.swift Resources/Icon/portrait-0025.png "$ICONSET"

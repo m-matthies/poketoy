@@ -116,6 +116,20 @@ import Testing
         #expect(await store.cachedSpritePaths() == ["0025", "0025/0000/0001", "0133"])
     }
 
+    @Test func bundledPortraitsNeedNoDownload() async throws {
+        let bundle = makeTempDirectory()
+        let portraits = bundle.appendingPathComponent("0004")
+        try FileManager.default.createDirectory(at: portraits, withIntermediateDirectories: true)
+        try Data("png".utf8).write(to: portraits.appendingPathComponent("Normal.png"))
+        try Data("png".utf8).write(to: portraits.appendingPathComponent("Joyous.png"))
+        let store = SpriteStore(cacheDirectory: makeTempDirectory(), remoteBase: URL(fileURLWithPath: "/nonexistent-remote"),
+                                bundledPortraits: bundle)
+        #expect(await store.portrait(for: "0004", names: ["Normal"])?.lastPathComponent == "Normal.png")
+        // Emotions the bundle lacks fall through to the next bundled one instead of a download.
+        #expect(await store.portrait(for: "0004", names: ["Happy", "Joyous", "Normal"])?.lastPathComponent == "Joyous.png")
+        #expect(await store.portrait(for: "0007", names: ["Normal"]) == nil)
+    }
+
     @Test func timeoutVariantReturnsWhenFast() async throws {
         let bundle = makeTempDirectory()
         try writeSpriteDirectory(at: bundle.appendingPathComponent("0025"), anims: anims)

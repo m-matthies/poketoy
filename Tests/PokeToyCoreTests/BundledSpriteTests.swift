@@ -7,6 +7,15 @@ import Testing
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Resources/Sprites/0025")
 
+    @Test(arguments: Starters.all.map(\.path)) func everyStarterIsBundled(path: String) throws {
+        let resources = directory.deletingLastPathComponent().deletingLastPathComponent()
+        let sprites = resources.appendingPathComponent("Sprites/\(path)")
+        #expect(SpriteStore.isComplete(sprites))
+        #expect((try? SpriteSet(directory: sprites)) != nil)
+        let normal = resources.appendingPathComponent("Portraits/\(path)/Normal.png")
+        #expect(FileManager.default.fileExists(atPath: normal.path))
+    }
+
     @Test func bundledPikachuIsComplete() throws {
         #expect(SpriteStore.isComplete(directory))
         let set = try SpriteSet(directory: directory)
