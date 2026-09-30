@@ -5,11 +5,14 @@ public struct CatalogEntry: Hashable, Codable, Identifiable, Sendable {
     /// Path under `sprite/`, e.g. `0025` or `0025/0000/0001`.
     public let path: String
     public let displayName: String
+    /// SpriteCollab marks the sprite set "Full" (`sprite_complete == 2`, ~35 animations).
+    public let isComplete: Bool
     public var id: String { path }
 
-    public init(path: String, displayName: String) {
+    public init(path: String, displayName: String, isComplete: Bool = false) {
         self.path = path
         self.displayName = displayName
+        self.isComplete = isComplete
     }
 }
 
@@ -24,17 +27,18 @@ public enum Catalog {
         return entries.sorted { $0.path < $1.path }
     }
 
-    public static func filter(_ entries: [CatalogEntry], query: String) -> [CatalogEntry] {
+    public static func filter(_ entries: [CatalogEntry], query: String, completeOnly: Bool = false) -> [CatalogEntry] {
+        let pool = completeOnly ? entries.filter(\.isComplete) : entries
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return entries }
-        return entries.filter { $0.displayName.lowercased().contains(needle) || $0.path.contains(needle) }
+        guard !needle.isEmpty else { return pool }
+        return pool.filter { $0.displayName.lowercased().contains(needle) || $0.path.contains(needle) }
     }
 
     private static func collect(_ node: TrackerNode, path: String, base: String, qualifiers: [String],
                                 into entries: inout [CatalogEntry]) {
         if node.spriteComplete > 0 {
             let name = qualifiers.isEmpty ? base : "\(base) (\(qualifiers.joined(separator: ", ")))"
-            entries.append(CatalogEntry(path: path, displayName: name))
+            entries.append(CatalogEntry(path: path, displayName: name, isComplete: node.spriteComplete >= 2))
         }
         for (id, child) in node.subgroups {
             let label = cleanName(child.name)

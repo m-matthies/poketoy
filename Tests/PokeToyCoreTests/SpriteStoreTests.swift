@@ -66,7 +66,7 @@ import Testing
         let remote = try makeRemote()
         let cache = makeTempDirectory()
         let store = SpriteStore(cacheDirectory: cache, remoteBase: remote)
-        #expect(try await store.catalog() == [CatalogEntry(path: "0025", displayName: "Pikachu")])
+        #expect(try await store.catalog() == [CatalogEntry(path: "0025", displayName: "Pikachu", isComplete: true)])
         #expect(FileManager.default.fileExists(atPath: cache.appendingPathComponent("tracker.json").path))
 
         try FileManager.default.removeItem(at: remote)

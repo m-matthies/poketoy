@@ -21,18 +21,18 @@ import Testing
     @Test func flattensFormsWithSprites() throws {
         let entries = try Catalog.parse(trackerJSON: Data(json.utf8))
         #expect(entries == [
-            CatalogEntry(path: "0000", displayName: "Missingno"),
-            CatalogEntry(path: "0025", displayName: "Pikachu"),
-            CatalogEntry(path: "0025/0000/0000/0002", displayName: "Pikachu (Female)"),
-            CatalogEntry(path: "0025/0000/0001", displayName: "Pikachu (Shiny)"),
-            CatalogEntry(path: "0025/0000/0001/0002", displayName: "Pikachu (Shiny, Female)"),
-            CatalogEntry(path: "0025/0002", displayName: "Pikachu (Rock Star)"),
+            CatalogEntry(path: "0000", displayName: "Missingno", isComplete: true),
+            CatalogEntry(path: "0025", displayName: "Pikachu", isComplete: true),
+            CatalogEntry(path: "0025/0000/0000/0002", displayName: "Pikachu (Female)", isComplete: true),
+            CatalogEntry(path: "0025/0000/0001", displayName: "Pikachu (Shiny)", isComplete: true),
+            CatalogEntry(path: "0025/0000/0001/0002", displayName: "Pikachu (Shiny, Female)", isComplete: true),
+            CatalogEntry(path: "0025/0002", displayName: "Pikachu (Rock Star)", isComplete: false),
         ])
     }
 
     @Test func toleratesMissingFields() throws {
-        let entries = try Catalog.parse(trackerJSON: Data(#"{"0001": {"name": "Bulbasaur", "sprite_complete": 2}}"#.utf8))
-        #expect(entries == [CatalogEntry(path: "0001", displayName: "Bulbasaur")])
+        let entries = try Catalog.parse(trackerJSON: Data(#"{"0001": {"name": "Bulbasaur", "sprite_complete": 1}}"#.utf8))
+        #expect(entries == [CatalogEntry(path: "0001", displayName: "Bulbasaur", isComplete: false)])
     }
 
     @Test func rejectsInvalidJSON() {
@@ -45,5 +45,12 @@ import Testing
         #expect(Catalog.filter(entries, query: "  SHINY ").map(\.path) == ["0025/0000/0001", "0025/0000/0001/0002"])
         #expect(Catalog.filter(entries, query: "25").count == 5)
         #expect(Catalog.filter(entries, query: "zzz").isEmpty)
+    }
+
+    @Test func completeOnlyHidesPartialSpriteSets() throws {
+        let entries = try Catalog.parse(trackerJSON: Data(json.utf8))
+        #expect(Catalog.filter(entries, query: "", completeOnly: true).count == 5)
+        #expect(Catalog.filter(entries, query: "rock", completeOnly: true).isEmpty)
+        #expect(Catalog.filter(entries, query: "rock", completeOnly: false).count == 1)
     }
 }
