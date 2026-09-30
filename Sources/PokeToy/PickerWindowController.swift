@@ -10,6 +10,7 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
     private var busy = false
 
     private let search = NSSearchField()
+    private let showAll = NSButton(checkboxWithTitle: "Show all Pokémon (including incomplete sprites)", target: nil, action: nil)
     private let table = NSTableView()
     private let status = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
@@ -45,7 +46,10 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
         search.placeholderString = "Search by name or number"
         search.sendsSearchStringImmediately = true
         search.target = self
-        search.action = #selector(searchChanged)
+        search.action = #selector(filterChanged)
+        showAll.state = .off
+        showAll.target = self
+        showAll.action = #selector(filterChanged)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
         column.resizingMask = .autoresizingMask
@@ -76,7 +80,7 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
 
         let footer = NSStackView(views: [status, spinner, retryButton, addButton])
         footer.orientation = .horizontal
-        let stack = NSStackView(views: [search, scroll, footer])
+        let stack = NSStackView(views: [search, showAll, scroll, footer])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -104,7 +108,7 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
             do {
                 all = try await model.catalog(forceRefresh: forceRefresh)
                 applyFilter()
-                setBusy(false, message: "\(all.count) Pokémon — double-click to add")
+                setBusy(false, message: countMessage)
             } catch {
                 setBusy(false, message: "Couldn't reach SpriteCollab.")
                 retryButton.isHidden = false
@@ -112,8 +116,12 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
         }
     }
 
+    private var countMessage: String {
+        "\(shown.count) Pokémon — double-click to add"
+    }
+
     private func applyFilter() {
-        shown = Catalog.filter(all, query: search.stringValue)
+        shown = Catalog.filter(all, query: search.stringValue, completeOnly: showAll.state != .on)
         table.reloadData()
     }
 
@@ -124,8 +132,9 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
         if busy { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
     }
 
-    @objc private func searchChanged() {
+    @objc private func filterChanged() {
         applyFilter()
+        if !busy && !all.isEmpty { status.stringValue = countMessage }
     }
 
     @objc private func retry() {
@@ -141,7 +150,7 @@ final class PickerWindowController: NSWindowController, NSTableViewDataSource, N
                 try await model.addPet(entry)
                 setBusy(false, message: "Added \(entry.displayName)!")
             } catch {
-                setBusy(false, message: "Couldn't load \(entry.displayName): \(error.localizedDescription)")
+                setBusy(false, message: "Couldn't add \(entry.displayName): \(error.localizedDescription)")
             }
         }
     }

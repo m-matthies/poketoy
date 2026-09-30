@@ -1,13 +1,16 @@
 import AppKit
 import PokeToyCore
 
-/// Menu item that runs a closure.
+/// Menu item that runs a closure; `enabled` (if given) decides whether it can be chosen.
 @MainActor
-final class ActionItem: NSMenuItem {
+final class ActionItem: NSMenuItem, NSMenuItemValidation {
     private let handler: () -> Void
+    private let isAllowed: (() -> Bool)?
 
-    init(_ title: String, key: String = "", state: NSControl.StateValue = .off, handler: @escaping () -> Void) {
+    init(_ title: String, key: String = "", state: NSControl.StateValue = .off, enabled: (() -> Bool)? = nil,
+         handler: @escaping () -> Void) {
         self.handler = handler
+        isAllowed = enabled
         super.init(title: title, action: #selector(fire), keyEquivalent: key)
         target = self
         self.state = state
@@ -19,6 +22,10 @@ final class ActionItem: NSMenuItem {
 
     @objc private func fire() {
         handler()
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        isAllowed?() ?? true
     }
 }
 
@@ -66,6 +73,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(ActionItem("Add Pokémon…", key: "n") { [unowned model] in model.showPicker() })
+        appMenu.addItem(ActionItem("Feed", key: "f", enabled: { [unowned model] in model.canFeed }) {
+            [unowned model] in model.feed()
+        })
         appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit PokeToy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -89,6 +99,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         let hidden = model.settings.hidden
         menu.addItem(ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) })
         menu.addItem(ActionItem("Add Pokémon…") { [unowned model] in model.showPicker() })
+        menu.addItem(ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() })
         menu.addItem(.separator())
 
         let pets = model.settings.pets
@@ -99,6 +110,10 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             for pet in pets {
                 let item = NSMenuItem(title: pet.displayName, action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
+                if let friend = model.bestFriendName(of: pet.id) {
+                    submenu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
+                    submenu.addItem(.separator())
+                }
                 submenu.addItem(ActionItem("Remove") { [unowned model] in model.removePet(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)

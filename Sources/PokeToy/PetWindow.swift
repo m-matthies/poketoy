@@ -38,16 +38,16 @@ final class PetWindow: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    /// Positions the panel so the sprite's feet sit at `feet` and draws `sprite`.
-    func render(sprite: SpriteFrame, footPadding: Int, heart: Bool, feet: CGPoint, scale: CGFloat) {
+    /// Positions the panel so the sprite's feet sit at `feet` and draws `sprite` with `hearts` above it.
+    func render(sprite: SpriteFrame, footPadding: Int, hearts: Int, feet: CGPoint, scale: CGFloat) {
         let width = CGFloat(sprite.image.width) * scale
         let height = CGFloat(sprite.image.height) * scale
         let rect = NSRect(x: (feet.x - width / 2).rounded(), y: (feet.y - CGFloat(footPadding) * scale).rounded(),
                           width: width, height: height + Self.heartSpace)
         if rect != frame { setFrame(rect, display: false) }
-        if petView.frameImage !== sprite.image || petView.showHeart != heart {
+        if petView.frameImage !== sprite.image || petView.hearts != hearts {
             petView.frameImage = sprite.image
-            petView.showHeart = heart
+            petView.hearts = hearts
             petView.needsDisplay = true
         }
         self.sprite = sprite
@@ -71,7 +71,7 @@ final class PetWindow: NSPanel {
 final class PetView: NSView {
     weak var delegate: PetViewDelegate?
     var frameImage: CGImage?
-    var showHeart = false
+    var hearts = 0
     private var mouseDownPoint: CGPoint?
     private var dragging = false
 
@@ -83,12 +83,12 @@ final class PetView: NSView {
         context.interpolationQuality = .none
         let spriteRect = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height - PetWindow.heartSpace)
         context.draw(image, in: spriteRect)
-        if showHeart {
-            let heart = NSAttributedString(string: "♥", attributes: [
+        if hearts > 0 {
+            let text = NSAttributedString(string: String(repeating: "♥", count: hearts), attributes: [
                 .font: NSFont.boldSystemFont(ofSize: 18), .foregroundColor: NSColor.systemPink,
             ])
-            let size = heart.size()
-            heart.draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: spriteRect.maxY - 4))
+            let size = text.size()
+            text.draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: spriteRect.maxY - 4))
         }
     }
 
