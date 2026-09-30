@@ -114,12 +114,13 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var hiddenWhileFrontmost: [ExcludedApp] = Preferences.defaultHiddenApps
     /// 30 fps on battery; paused while the screen is locked.
     public var batterySaver = true
+    public var pomodoro = PomodoroOptions()
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case petSpeed, naps, screens, feedShortcut, catchGameShortcut, showHideShortcut, hideInFullScreen,
-             hiddenWhileFrontmost, batterySaver
+             hiddenWhileFrontmost, batterySaver, pomodoro
     }
 
     public init(from decoder: Decoder) throws {
@@ -137,6 +138,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         hiddenWhileFrontmost = (try? c.decodeIfPresent([ExcludedApp].self, forKey: .hiddenWhileFrontmost))
             ?? defaults.hiddenWhileFrontmost
         batterySaver = (try? c.decodeIfPresent(Bool.self, forKey: .batterySaver)) ?? defaults.batterySaver
+        pomodoro = (try? c.decodeIfPresent(PomodoroOptions.self, forKey: .pomodoro)) ?? defaults.pomodoro
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -150,6 +152,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(hideInFullScreen, forKey: .hideInFullScreen)
         try c.encode(hiddenWhileFrontmost, forKey: .hiddenWhileFrontmost)
         try c.encode(batterySaver, forKey: .batterySaver)
+        try c.encode(pomodoro, forKey: .pomodoro)
     }
 
     private static func shortcut(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys,

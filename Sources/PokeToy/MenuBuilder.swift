@@ -188,34 +188,26 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             menu.addItem(NSMenuItem(title: model.needsStarter ? "No pets yet" : "No pets — catch some in the Catch Game",
                                     action: nil, keyEquivalent: ""))
         } else {
-            menu.addItem(NSMenuItem(title: "Pets", action: nil, keyEquivalent: ""))
+            let out = model.petsOnScreen
+            menu.addItem(NSMenuItem(title: "Pets — \(out) of \(pets.count) out", action: nil, keyEquivalent: ""))
             for pet in pets {
-                let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
+                let badge = model.pomodoroBadge(for: pet.id).map { "   \($0)" } ?? ""
+                let item = NSMenuItem(title: (pet.inBall ? "◓ " : "") + pet.name + badge, action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
-                if let friend = model.bestFriendName(of: pet.id) {
-                    submenu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
-                    submenu.addItem(.separator())
-                }
-                switch model.evolutionStatus(of: pet.id) {
-                case .ready(let options):
-                    for option in options {
-                        submenu.addItem(ActionItem("Evolve into \(option.displayName)") { [unowned model] in
-                            model.evolve(pet.id, into: option)
-                        })
-                    }
-                    submenu.addItem(.separator())
-                case .notReady(let treatsLeft, let needsBestFriend):
-                    let treats = treatsLeft == 1 ? "1 more treat" : "\(treatsLeft) more treats"
-                    let text = treatsLeft == 0 ? "Evolves once it has a best friend"
-                        : "Evolves after \(treats)" + (needsBestFriend ? " and a best friend" : "")
-                    submenu.addItem(NSMenuItem(title: text, action: nil, keyEquivalent: ""))
-                    submenu.addItem(.separator())
-                case .none:
-                    break
-                }
+                addPomodoroItems(to: submenu, petID: pet.id)
+                submenu.addItem(.separator())
+                addPetItems(for: pet, to: submenu)
+                if submenu.items.last?.isSeparatorItem == false { submenu.addItem(.separator()) }
+                addBallItem(for: pet, to: submenu)
                 submenu.addItem(ActionItem("Release…") { [unowned model] in model.confirmRelease(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)
+            }
+            if out > 0 {
+                menu.addItem(ActionItem("Return All to Poké Balls") { [unowned model] in model.setAllInBall(true) })
+            }
+            if out < pets.count {
+                menu.addItem(ActionItem("Let All Out") { [unowned model] in model.setAllInBall(false) })
             }
         }
         menu.addItem(.separator())
@@ -249,6 +241,125 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             NSApp.orderFrontStandardAboutPanel(nil)
         })
         menu.addItem(ActionItem("Quit PokeToy") { NSApp.terminate(nil) })
+    }
+
+    /// A pet's own menu (right-click or ⌃-click it): its name, the Pomodoro timer, then best friend and evolution
+    /// (releasing is left to the paw menu and the Pets window, away from a quick right-click).
+    func makePetMenu(for id: UUID) -> NSMenu? {
+        guard let pet = model.settings.pets.first(where: { $0.id == id }) else { return nil }
+        model.refreshEvolutionOptions()
+        let menu = NSMenu()
+        let title = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
+        title.attributedTitle = NSAttributedString(string: pet.name, attributes: [.font: NSFont.boldSystemFont(ofSize: 13)])
+        menu.addItem(title)
+        menu.addItem(.separator())
+        addPomodoroItems(to: menu, petID: id)
+        let petItems = NSMenu()
+        addPetItems(for: pet, to: petItems)
+        if petItems.numberOfItems > 0 {
+            menu.addItem(.separator())
+            for item in petItems.items {
+                petItems.removeItem(item)
+                menu.addItem(item)
+            }
+        }
+        menu.addItem(.separator())
+        addBallItem(for: pet, to: menu)
+        return menu
+    }
+
+    private func addBallItem(for pet: PetRecord, to menu: NSMenu) {
+        menu.addItem(ActionItem(pet.inBall ? "Let Out of Poké Ball" : "Return to Poké Ball") { [unowned model] in
+            model.setInBall(pet.id, !pet.inBall)
+        })
+    }
+
+    /// Best friend and evolution for one pet.
+    private func addPetItems(for pet: PetRecord, to menu: NSMenu) {
+        if let friend = model.bestFriendName(of: pet.id) {
+            menu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
+        }
+        switch model.evolutionStatus(of: pet.id) {
+        case .ready(let options):
+            for option in options {
+                menu.addItem(ActionItem("Evolve into \(option.displayName)") { [unowned model] in
+                    model.evolve(pet.id, into: option)
+                })
+            }
+        case .notReady:
+            if let text = model.evolutionStatus(of: pet.id).waitingText {
+                menu.addItem(NSMenuItem(title: text, action: nil, keyEquivalent: ""))
+            }
+        case .none:
+            break
+        }
+    }
+
+    /// A pet's timer: what it's doing, its task, and the sessions to start (the built-ins and the player's own).
+    private func addPomodoroItems(to menu: NSMenu, petID id: UUID) {
+        let options = model.pomodoroOptions
+        if let timer = model.timer(for: id) {
+            menu.addItem(NSMenuItem(title: model.pomodoroStatus(for: id) ?? "Pomodoro", action: nil, keyEquivalent: ""))
+            if let task = timer.task { menu.addItem(NSMenuItem(title: "Task: \(task)", action: nil, keyEquivalent: "")) }
+            if timer.isWaiting {
+                let icon = timer.phase.icon
+                menu.addItem(ActionItem("\(icon) Start \(timer.label) — \(options.minutes(of: timer.phase)) min") {
+                    [unowned model] in model.startNext(on: id)
+                })
+            } else if timer.isPaused {
+                menu.addItem(ActionItem("Resume") { [unowned model] in model.resumePomodoro(on: id) })
+            } else {
+                menu.addItem(ActionItem("Pause") { [unowned model] in model.pausePomodoro(on: id) })
+            }
+            if !timer.isWaiting {
+                menu.addItem(ActionItem("Add 5 Minutes") { [unowned model] in model.adjustPomodoro(on: id, minutes: 5) })
+                if timer.remaining(at: Date()) > 6 * 60 {
+                    menu.addItem(ActionItem("Take Off 5 Minutes") { [unowned model] in
+                        model.adjustPomodoro(on: id, minutes: -5)
+                    })
+                }
+                menu.addItem(ActionItem(timer.phase == .focus ? "Skip to Break" : "End Break") {
+                    [unowned model] in model.skipPomodoro(on: id)
+                })
+            }
+            let others = NSMenu()
+            addSessionItems(to: others, petID: id)
+            let item = NSMenuItem(title: "Start Another Session", action: nil, keyEquivalent: "")
+            item.submenu = others
+            menu.addItem(item)
+        } else {
+            menu.addItem(NSMenuItem(title: "Pomodoro", action: nil, keyEquivalent: ""))
+            addSessionItems(to: menu, petID: id)
+        }
+        let current = model.timer(for: id)
+        let task = current?.task
+        if model.isOnScreen(id) {  // edited right at the pet
+            let title: String
+            if let current, !current.isWaiting {
+                title = task == nil ? "Name Task & Set Time Left…" : "Edit Task & Time Left…"
+            } else if let current, current.phase.isBreak {
+                title = task == nil ? "Name a Task…" : "Rename Task…"
+            } else {
+                title = "Start a Task…"
+            }
+            menu.addItem(ActionItem(title) { [unowned model] in model.editTask(on: id) })
+        }
+        if task != nil {
+            menu.addItem(ActionItem("Clear Task") { [unowned model] in model.setTask("", on: id) })
+        }
+        if model.timer(for: id) != nil {
+            menu.addItem(ActionItem("Stop Timer") { [unowned model] in model.stopPomodoro(on: id) })
+        }
+    }
+
+    /// One item per session: "💼 Focus — 25 min", "☕️ Walk — 10 min"…
+    private func addSessionItems(to menu: NSMenu, petID id: UUID) {
+        for session in model.pomodoroOptions.sessions {
+            let icon = session.kind.icon
+            menu.addItem(ActionItem("\(icon) \(session.name) — \(session.minutes) min") {
+                [unowned model] in model.startSession(session, on: id)
+            })
+        }
     }
 
     private func addSubmenu(_ submenu: NSMenu, titled title: String? = nil, to menu: NSMenu) {

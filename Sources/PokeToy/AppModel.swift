@@ -79,6 +79,8 @@ final class AppModel {
     private var lastAutoHideCheck: CFTimeInterval = 0
     private var lastPowerCheck: CFTimeInterval = 0
     private var sessionInactive = false
+    private let notifier = Notifier()
+    private var lastPomodoroCheck: CFTimeInterval = 0
     private var hotKeys: [GlobalHotKey] = []
     /// Shortcuts macOS refused because another app already uses them.
     private(set) var unavailableShortcuts: Set<ShortcutAction> = []
@@ -113,7 +115,7 @@ final class AppModel {
         settings.save(to: .standard)
         worldMonitor.mainScreenOnly = settings.preferences.screens == .main
         worldMonitor.start()
-        for record in settings.pets {
+        for record in settings.pets where !record.inBall {
             Task {
                 do {
                     attach(record, sprites: try await loadSprites(record.spritePath))
@@ -125,6 +127,7 @@ final class AppModel {
         observeScreenLock()
         onBattery = Self.isOnBattery()
         applyPreferences()
+        if !settings.timers.isEmpty { notifier.prepare() }
         refreshEvolutionOptions()
         if !settings.starterChosen { showStarterChoice() }
     }
@@ -217,6 +220,204 @@ final class AppModel {
         case .catchGame: if isGameRunning { endCatchGame() } else { startCatchGame() }
         case .showHide: toggleHidden()
         }
+    }
+
+    // MARK: - Pomodoro
+
+    var pomodoroOptions: PomodoroOptions { settings.preferences.pomodoro }
+
+    /// The timer a pet carries, if any.
+    func timer(for id: UUID) -> Pomodoro? {
+        settings.timers.first { $0.petID == id }
+    }
+
+    /// Changes (or creates, or with nil removes) a pet's timer and saves.
+    private func updateTimer(for id: UUID, _ change: (inout Pomodoro?) -> Void) {
+        var timer = timer(for: id)
+        change(&timer)
+        settings.timers.removeAll { $0.petID == id }
+        if let timer { settings.timers.append(timer) }
+        save()
+    }
+
+    /// "💼 Deep Work — 12:34 left", for menus.
+    func pomodoroStatus(for id: UUID) -> String? {
+        guard let timer = timer(for: id) else { return nil }
+        let icon = timer.phase.icon
+        if timer.isWaiting { return "\(icon) Up next: \(timer.label)" }
+        return "\(icon) \(timer.label) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
+            + (timer.isPaused ? " (paused)" : "")
+    }
+
+    /// The countdown (and task) shown above a pet carrying a timer.
+    func pomodoroBadge(for id: UUID) -> String? {
+        guard let timer = timer(for: id) else { return nil }
+        let clock: String
+        if timer.isWaiting {
+            clock = timer.phase == .focus ? "\(timer.phase.icon) Ready?" : "\(timer.phase.icon) Break?"
+        } else {
+            let icon = timer.isPaused ? "⏸" : timer.phase.icon
+            clock = "\(icon) \(Pomodoro.clock(timer.remaining(at: Date())))"
+        }
+        guard let task = timer.task else { return clock }
+        return "\(clock) · \(task.count > 24 ? task.prefix(23) + "…" : task)"
+    }
+
+    /// Starts a session on a pet (its cycle count and task carry on).
+    func startSession(_ session: SessionPreset, on id: UUID) {
+        updateTimer(for: id) { timer in
+            if timer == nil { timer = Pomodoro.waiting(petID: id, options: pomodoroOptions) }
+            timer?.start(session, at: Date())
+        }
+        playground.stopSeekingAttention(id)
+        if pomodoroOptions.notifications { notifier.prepare() }
+    }
+
+    /// Starts what the pet's timer has up next (after a phase that didn't start by itself).
+    func startNext(on id: UUID) {
+        guard let timer = timer(for: id), timer.isWaiting else { return }
+        let session = pomodoroOptions.session(timer.phase.rawValue)
+            ?? SessionPreset.builtIn(timer.phase, minutes: pomodoroOptions.minutes(of: timer.phase))
+        startSession(session, on: id)
+    }
+
+    func pausePomodoro(on id: UUID) {
+        updateTimer(for: id) { $0?.pause(at: Date()) }
+        playground.stopSeekingAttention(id)
+    }
+
+    func resumePomodoro(on id: UUID) {
+        updateTimer(for: id) { $0?.resume(at: Date()) }
+        playground.stopSeekingAttention(id)
+    }
+
+    /// Ends the current session now (quietly: the player chose it; a skipped focus doesn't count).
+    func skipPomodoro(on id: UUID) {
+        let options = pomodoroOptions
+        updateTimer(for: id) { timer in _ = timer?.skip(at: Date(), options: options) }
+        playground.stopSeekingAttention(id)
+    }
+
+    func stopPomodoro(on id: UUID) {
+        updateTimer(for: id) { $0 = nil }
+        playground.stopSeekingAttention(id)
+    }
+
+    /// Names (or with a blank name clears) the task on a pet's timer; a pet without one gets a timer waiting
+    /// for its first focus.
+    func setTask(_ name: String, on id: UUID) {
+        updateTimer(for: id) { timer in
+            if timer == nil { timer = Pomodoro.waiting(petID: id, options: pomodoroOptions) }
+            timer?.setTask(name)
+        }
+    }
+
+    /// What the task editor above a pet shows: the task, and the minutes to work (starting a focus) or left.
+    struct TaskEditorState {
+        let task: String
+        /// nil: no time to set (a break is up next).
+        let minutes: Int?
+        let unit: String
+        let hint: String
+    }
+
+    func taskEditorState(for id: UUID) -> TaskEditorState {
+        let timer = timer(for: id)
+        let task = timer?.task ?? ""
+        guard let timer, !timer.isWaiting else {
+            if let timer, timer.phase.isBreak {
+                return TaskEditorState(task: task, minutes: nil, unit: "", hint: "Return saves · Esc cancels")
+            }
+            return TaskEditorState(task: task, minutes: pomodoroOptions.focusMinutes, unit: "min",
+                                   hint: "Return starts working on it · Esc cancels")
+        }
+        let left = Int((timer.remaining(at: Date()) / 60).rounded(.up))
+        return TaskEditorState(task: task, minutes: max(1, left), unit: "min left", hint: "Return saves · Esc cancels")
+    }
+
+    /// Saves what was typed above a pet: the task, and its time — starting a focus of that length when none is
+    /// running, or setting the time left of the running session when it was changed.
+    func saveTask(_ name: String, minutes: Int?, on id: UUID) {
+        let shown = taskEditorState(for: id).minutes
+        let options = pomodoroOptions
+        var started = false
+        updateTimer(for: id) { timer in
+            if timer == nil { timer = Pomodoro.waiting(petID: id, options: options) }
+            timer?.setTask(name)
+            guard let minutes, var current = timer else { return }
+            if current.isWaiting {
+                if current.phase == .focus {
+                    current.startFocus(minutes: minutes, at: Date(), options: options)
+                    started = true
+                }
+            } else if minutes != shown {
+                current.setRemaining(minutes: minutes, at: Date())
+            }
+            timer = current
+        }
+        if started {
+            playground.stopSeekingAttention(id)
+            if options.notifications { notifier.prepare() }
+        }
+    }
+
+    /// Adds (or with a negative amount takes off) minutes from a pet's running or paused session.
+    func adjustPomodoro(on id: UUID, minutes: Int) {
+        updateTimer(for: id) { $0?.adjust(by: Double(minutes * 60), at: Date()) }
+    }
+
+    /// Asks for the task's name in a small field right above the pet.
+    func editTask(on id: UUID) {
+        petViews[id]?.editTask()
+    }
+
+    /// Whether a pet is out on the screen (a task can only be named right at a pet that's out).
+    func isOnScreen(_ id: UUID) -> Bool {
+        petViews[id] != nil
+    }
+
+    /// The user is looking at this pet (opened its menu): it can stop trying to get their attention.
+    func noticed(pet id: UUID) {
+        playground.stopSeekingAttention(id)
+    }
+
+    /// When a pet's session runs out: it reacts, comes to get the user's attention, and a notification says what's next.
+    private func checkPomodoro() {
+        let options = pomodoroOptions
+        let now = Date()
+        for index in settings.timers.indices {
+            var timer = settings.timers[index]
+            guard let outcome = timer.advance(at: now, options: options) else { continue }
+            let finished = settings.timers[index]  // before advancing: what just ended
+            settings.timers[index] = timer
+            announce(outcome, finished: finished, timer: timer, options: options)
+        }
+    }
+
+    private func announce(_ outcome: Pomodoro.Outcome, finished: Pomodoro, timer: Pomodoro, options: PomodoroOptions) {
+        let id = timer.petID
+        let name = settings.pets.first { $0.id == id }?.name ?? "Your Pokémon"
+        let task = finished.task.map { " on “\($0)”" } ?? ""
+        let title: String, body: String
+        switch outcome {
+        case .focusDone:
+            playground.celebrate(id)
+            // A finished focus counts towards evolving the pet that carried the timer (skipped ones don't).
+            if let index = settings.pets.firstIndex(where: { $0.id == id }) { settings.pets[index].focusSessions += 1 }
+            title = "\(finished.label)\(task) done! \(finished.phase.icon)"
+            let rest = "\(timer.label) (\(options.minutes(of: timer.phase)) min)"
+            body = timer.isWaiting ? "\(name) says: time for \(rest) — right-click it to start."
+                : "\(name) says: time for \(rest)."
+        case .breakDone:
+            playground.nudge(id)
+            title = "\(finished.label) is over ☕️"
+            body = timer.isWaiting ? "\(name) is ready when you are — right-click it to start \(timer.label)."
+                : "\(name) says: back to \(timer.label) for \(options.minutes(of: timer.phase)) minutes!"
+        }
+        save()
+        petsChanged()
+        if options.seekAttention { playground.seekAttention(id, everyone: false) }
+        notifier.post(title: title, body: body, notify: options.notifications, sound: options.sound)
     }
 
     // MARK: - Launch at login
@@ -362,6 +563,78 @@ final class AppModel {
     }
 
     /// Releases a pet: it leaves the screen (its Pokédex entry stays, as a former pet).
+    // MARK: - Poké Balls
+
+    /// Pets out on the screen (the rest rest in their Poké Balls).
+    var petsOnScreen: Int { settings.pets.filter { !$0.inBall }.count }
+
+    /// Puts a pet in its Poké Ball — off the screen, but kept with its friends, progress and timer — or lets it out.
+    func setInBall(_ id: UUID, _ inBall: Bool) {
+        guard let index = settings.pets.firstIndex(where: { $0.id == id }), settings.pets[index].inBall != inBall else { return }
+        if inBall {
+            save()  // remember where it was
+            let look = petsHidden ? nil : petViews[id]?.snapshot()
+            let feet = playground.pet(id)?.body.position
+            playground.stowPet(id)
+            petViews.removeValue(forKey: id)?.close()
+            settings.pets[index].inBall = true
+            if let look, let feet {
+                // The ball lands beside the pet, on the side with more room.
+                let screen = worldMonitor.world.screens.first { $0.frame.contains(feet) }?.visibleFrame
+                let side: CGFloat = feet.x + look.rect.width < (screen?.maxX ?? .infinity) - 40 ? 1 : -1
+                let center = CGPoint(x: feet.x + side * (look.rect.width / 2 + ballSize), y: feet.y + ballSize / 2)
+                playBall(.recall, sprite: look.image, spriteRect: look.rect, ballCenter: center) {}
+            }
+        } else {
+            settings.pets[index].inBall = false
+            let record = settings.pets[index]
+            Task {
+                guard let sprites = try? await loadSprites(record.spritePath) else { return }
+                let start = startPoint(for: record)
+                let comeOut = {
+                    self.attach(record, sprites: sprites, at: start)
+                    self.showEmotion(.happy, pet: id)
+                }
+                guard !petsHidden else { return comeOut() }
+                let idle = sprites.animation(.idle)
+                let frame = idle.frames(facing: .down)[0]
+                let scale = playground.scale
+                let size = CGSize(width: CGFloat(frame.image.width) * scale, height: CGFloat(frame.image.height) * scale)
+                let rect = NSRect(x: start.x - size.width / 2, y: start.y - CGFloat(idle.footPadding(facing: .down)) * scale,
+                                  width: size.width, height: size.height)
+                playBall(.release, sprite: frame.image, spriteRect: rect,
+                         ballCenter: CGPoint(x: start.x, y: start.y + ballSize / 2), then: comeOut)
+            }
+        }
+        save()
+        petsChanged()
+    }
+
+    /// Returns or lets out every pet, one after another.
+    func setAllInBall(_ inBall: Bool) {
+        let ids = settings.pets.filter { $0.inBall != inBall }.map(\.id)
+        for (order, id) in ids.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(order) * 0.18) { [weak self] in
+                MainActor.assumeIsolated { self?.setInBall(id, inBall) }
+            }
+        }
+    }
+
+    private var ballAnimations: [BallAnimationWindow] = []
+    private var ballSize: CGFloat { CGFloat(ItemArt.size) * playground.scale * 1.4 }
+
+    private func playBall(_ kind: BallAnimation.Kind, sprite: CGImage, spriteRect: NSRect, ballCenter: CGPoint,
+                          then done: @escaping () -> Void) {
+        let animation = BallAnimationWindow(kind: kind, sprite: sprite, spriteRect: spriteRect, ballCenter: ballCenter,
+                                            ballSize: ballSize)
+        ballAnimations.append(animation)
+        animation.play { [weak self, weak animation] in
+            self?.ballAnimations.removeAll { $0 === animation }
+            animation?.close()
+            done()
+        }
+    }
+
     /// Asks first, then releases the pet.
     func confirmRelease(_ id: UUID) {
         guard let pet = settings.pets.first(where: { $0.id == id }) else { return }
@@ -379,6 +652,7 @@ final class AppModel {
         playground.removePet(id)
         petViews.removeValue(forKey: id)?.close()
         settings.pets.removeAll { $0.id == id }
+        settings.timers.removeAll { $0.petID == id }  // its timer leaves with it
         save()
         petsChanged()
     }
@@ -408,16 +682,30 @@ final class AppModel {
 
     enum EvolutionStatus {
         case none
-        case notReady(treatsLeft: Int, needsBestFriend: Bool)
+        case notReady(treatsLeft: Int, focusSessionsLeft: Int, needsBestFriend: Bool)
         case ready([CatalogEntry])
+
+        /// "Evolves after 3 more treats, 12 more focus sessions and a best friend"
+        var waitingText: String? {
+            guard case .notReady(let treats, let sessions, let needsFriend) = self else { return nil }
+            let parts = [treats > 0 ? (treats == 1 ? "1 more treat" : "\(treats) more treats") : nil,
+                         sessions > 0 ? (sessions == 1 ? "1 more focus session" : "\(sessions) more focus sessions") : nil,
+                         needsFriend ? "a best friend" : nil].compactMap { $0 }
+            guard let last = parts.last else { return nil }
+            let list = parts.count == 1 ? last : parts.dropLast().joined(separator: ", ") + " and " + last
+            return "Evolves after " + list
+        }
     }
 
     func evolutionStatus(of id: UUID) -> EvolutionStatus {
         guard !evolving.contains(id), let record = settings.pets.first(where: { $0.id == id }),
               let options = evolutionOptions[id], !options.isEmpty else { return .none }
+        let needed = pomodoroOptions.focusSessionsToEvolve
         let hasBestFriend = bestFriendName(of: id) != nil
-        if Evolution.isReady(treatsEaten: record.treatsEaten, hasBestFriend: hasBestFriend) { return .ready(options) }
-        return .notReady(treatsLeft: max(0, Evolution.treatsNeeded - record.treatsEaten), needsBestFriend: !hasBestFriend)
+        if Evolution.isReady(treatsEaten: record.treatsEaten, focusSessions: record.focusSessions,
+                             focusSessionsNeeded: needed, hasBestFriend: hasBestFriend) { return .ready(options) }
+        return .notReady(treatsLeft: max(0, Evolution.treatsNeeded - record.treatsEaten),
+                         focusSessionsLeft: max(0, needed - record.focusSessions), needsBestFriend: !hasBestFriend)
     }
 
     /// Asks PokeAPI (cached on disk) what each pet can evolve into, for pets not known yet.
@@ -473,6 +761,7 @@ final class AppModel {
             settings.pets[index].spritePath = path
             settings.pets[index].displayName = settings.pets[index].isShiny ? "\(entry.displayName) (Shiny)" : entry.displayName
             settings.pets[index].treatsEaten = 0
+            settings.pets[index].focusSessions = 0
             recordInPokedex(settings.pets[index])
             playground.replaceMetrics(of: id, with: PetMetrics(sprites: sprites))
             petViews[id]?.replaceSprites(sprites)
@@ -718,12 +1007,17 @@ final class AppModel {
         return try SpriteSet(directory: directory)
     }
 
-    private func attach(_ record: PetRecord, sprites: SpriteSet) {
-        // A pet removed while its sprites were loading is dropped.
-        guard settings.pets.contains(where: { $0.id == record.id }), petViews[record.id] == nil else { return }
+    /// Where a pet comes back: its last spot if that's still on a screen, else somewhere along the top.
+    private func startPoint(for record: PetRecord) -> CGPoint {
         let world = worldMonitor.world
-        let start = record.position.flatMap { world.isOnAnyScreen($0, margin: 0) ? $0 : nil }
+        return record.position.flatMap { world.isOnAnyScreen($0, margin: 0) ? $0 : nil }
             ?? world.spawnPoint(fraction: .random(in: 0.2...0.8))
+    }
+
+    private func attach(_ record: PetRecord, sprites: SpriteSet, at point: CGPoint? = nil) {
+        // A pet removed (or put in its ball) while its sprites were loading is dropped.
+        guard settings.pets.contains(where: { $0.id == record.id && !$0.inBall }), petViews[record.id] == nil else { return }
+        let start = point ?? startPoint(for: record)
         playground.addPet(id: record.id, role: .own, metrics: PetMetrics(sprites: sprites), at: start)
         let view = PetController(id: record.id, sprites: sprites, model: self, interactive: true)
         if !petsHidden { view.show() }
@@ -828,6 +1122,10 @@ final class AppModel {
         if tickCount % 60 == 1 {  // once a second is plenty for the clock and accessibility settings
             playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
             playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+        if now - lastPomodoroCheck >= 0.25 {
+            lastPomodoroCheck = now
+            checkPomodoro()
         }
         if now - lastAutoHideCheck >= 0.2 {  // 5 Hz, like the world updates
             lastAutoHideCheck = now

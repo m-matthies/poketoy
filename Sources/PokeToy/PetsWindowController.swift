@@ -9,7 +9,7 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     private var portraits: [String: NSImage] = [:]
     private var requestedPortraits: Set<String> = []
     private let header = NSTextField(labelWithString: "")
-    private let table = PetsTableView()
+    private let table = ClickToEditTableView()
     /// A refresh was skipped while a name was being typed; catch up when typing ends.
     private var needsReload = false
     private let dateFormatter: DateFormatter = {
@@ -92,7 +92,8 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
         needsReload = false
         pets = model.settings.pets
         header.stringValue = pets.isEmpty ? "No pets yet — catch some in the Catch Game!"
-            : "\(pets.count) of \(Playground.maxOwnPets) pets"
+            : "\(pets.count) of \(Playground.maxOwnPets) pets · \(model.petsOnScreen) out, "
+              + "\(pets.count - model.petsOnScreen) in their Poké Balls"
         table.reloadData()
     }
 
@@ -116,6 +117,11 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
         cell.release.tag = row
         cell.release.target = self
         cell.release.action = #selector(release(_:))
+        cell.ball.title = pet.inBall ? "Let Out" : "Return to Ball"
+        cell.ball.tag = row
+        cell.ball.target = self
+        cell.ball.action = #selector(toggleBall(_:))
+        cell.portrait.alphaValue = pet.inBall ? 0.45 : 1
         return cell
     }
 
@@ -124,19 +130,15 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
         var first: [String] = []
         if let joined = pet.joined { first.append("Together since \(dateFormatter.string(from: joined))") }
         first.append(pet.treatsEaten == 1 ? "1 treat eaten" : "\(pet.treatsEaten) treats eaten")
+        first.append(pet.focusSessions == 1 ? "1 focus session" : "\(pet.focusSessions) focus sessions")
         lines.append(first.joined(separator: " · "))
         var second: [String] = []
         second.append(model.bestFriendName(of: pet.id).map { "Best friend: \($0)" } ?? "No best friend yet")
         switch model.evolutionStatus(of: pet.id) {
         case .ready(let options):
             second.append("Ready to evolve into " + options.map(\.displayName).joined(separator: " or "))
-        case .notReady(let treatsLeft, let needsBestFriend):
-            if treatsLeft > 0 {
-                second.append("Evolves after \(treatsLeft) more treat\(treatsLeft == 1 ? "" : "s")"
-                              + (needsBestFriend ? " and a best friend" : ""))
-            } else {
-                second.append("Evolves once it has a best friend")
-            }
+        case .notReady:
+            if let text = model.evolutionStatus(of: pet.id).waitingText { second.append(text) }
         case .none:
             break
         }
@@ -170,6 +172,13 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
         reload()  // also catches up on anything skipped while typing
     }
 
+    @objc private func toggleBall(_ sender: NSButton) {
+        guard pets.indices.contains(sender.tag) else { return }
+        let pet = pets[sender.tag]
+        model.setInBall(pet.id, !pet.inBall)
+        reload()
+    }
+
     @objc private func release(_ sender: NSButton) {
         guard pets.indices.contains(sender.tag) else { return }
         model.confirmRelease(pets[sender.tag].id)
@@ -177,8 +186,8 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
     }
 }
 
-/// Lets a click go straight into a row's name field (a plain table would select the row first).
-private final class PetsTableView: NSTableView {
+/// Lets a click go straight into a row's text field (a plain table would select the row first).
+final class ClickToEditTableView: NSTableView {
     override func validateProposedFirstResponder(_ responder: NSResponder, for event: NSEvent?) -> Bool {
         responder is NSTextField || super.validateProposedFirstResponder(responder, for: event)
     }
@@ -193,6 +202,7 @@ private final class PetCell: NSTableCellView {
     let species = NSTextField(labelWithString: "")
     let stats = NSTextField(wrappingLabelWithString: "")
     let release = NSButton(title: "Release", target: nil, action: nil)
+    let ball = NSButton(title: "Return to Ball", target: nil, action: nil)
 
     init() {
         super.init(frame: .zero)
@@ -210,7 +220,9 @@ private final class PetCell: NSTableCellView {
         stats.maximumNumberOfLines = 2
         release.bezelStyle = .rounded
         release.controlSize = .small
-        for view in [portrait, name, species, stats, release] as [NSView] {
+        ball.bezelStyle = .rounded
+        ball.controlSize = .small
+        for view in [portrait, name, species, stats, release, ball] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -222,7 +234,9 @@ private final class PetCell: NSTableCellView {
             portrait.heightAnchor.constraint(equalToConstant: 56),
             name.leadingAnchor.constraint(equalTo: portrait.trailingAnchor, constant: 10),
             name.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            name.trailingAnchor.constraint(equalTo: release.leadingAnchor, constant: -8),
+            name.trailingAnchor.constraint(equalTo: ball.leadingAnchor, constant: -8),
+            ball.trailingAnchor.constraint(equalTo: release.leadingAnchor, constant: -6),
+            ball.centerYAnchor.constraint(equalTo: name.centerYAnchor),
             release.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             release.centerYAnchor.constraint(equalTo: name.centerYAnchor),
             species.leadingAnchor.constraint(equalTo: name.leadingAnchor, constant: 2),

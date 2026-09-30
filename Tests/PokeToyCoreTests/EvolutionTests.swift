@@ -39,9 +39,11 @@ import Testing
     }
 
     @Test func readiness() {
-        #expect(!Evolution.isReady(treatsEaten: 14, hasBestFriend: true))
-        #expect(!Evolution.isReady(treatsEaten: 15, hasBestFriend: false))
-        #expect(Evolution.isReady(treatsEaten: 15, hasBestFriend: true))
+        #expect(!Evolution.isReady(treatsEaten: 14, focusSessions: 50, focusSessionsNeeded: 50, hasBestFriend: true))
+        #expect(!Evolution.isReady(treatsEaten: 15, focusSessions: 49, focusSessionsNeeded: 50, hasBestFriend: true))
+        #expect(!Evolution.isReady(treatsEaten: 15, focusSessions: 50, focusSessionsNeeded: 50, hasBestFriend: false))
+        #expect(Evolution.isReady(treatsEaten: 15, focusSessions: 50, focusSessionsNeeded: 50, hasBestFriend: true))
+        #expect(Evolution.isReady(treatsEaten: 20, focusSessions: 3, focusSessionsNeeded: 3, hasBestFriend: true))
         #expect(Evolution.dexNumber(of: "0133/0000/0001") == 133)
         #expect(Evolution.dexNumber(of: "abc") == nil)
         #expect(Evolution.path(for: 25) == "0025")

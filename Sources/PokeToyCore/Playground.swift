@@ -176,6 +176,8 @@ public struct Playground: Sendable {
     var blockTimes: [UUID: [Double]] = [:]
     /// Pets racing for the fetch ball.
     var fetchRacers: Set<UUID> = []
+    /// Pets trying to get the user's attention.
+    var attention: [UUID: AttentionSeeker] = [:]
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
     var wildShiny: Set<UUID> = []
@@ -243,7 +245,12 @@ public struct Playground: Sendable {
         return id
     }
 
-    public mutating func removePet(_ id: UUID) {
+    /// Takes a pet off the screen into its Poké Ball: unlike releasing it, its friendships stay.
+    public mutating func stowPet(_ id: UUID) {
+        removePet(id, keepFriendships: true)
+    }
+
+    public mutating func removePet(_ id: UUID, keepFriendships: Bool = false) {
         for moment in moments where moment.a == id || moment.b == id {
             let partner = moment.a == id ? moment.b : moment.a
             if let p = index(of: partner) { pets[p].endScript() }
@@ -265,7 +272,9 @@ public struct Playground: Sendable {
         annoyedUntil[id] = nil
         passThrough[id] = nil
         blockTimes[id] = nil
-        if wasOwn {
+        attention[id] = nil
+        fetchRacers.remove(id)
+        if wasOwn && !keepFriendships {
             friendships.remove(id)
             events.append(.friendshipChanged)
         }
@@ -285,6 +294,7 @@ public struct Playground: Sendable {
     public mutating func handle(_ event: PetEvent, pet id: UUID) {
         guard let i = index(of: id), pets[i].visible else { return }
         if event == .pressed || event == .click || event == .dragBegan { strokes[id] = nil }  // a click is never a stroke
+        if event == .click || event == .dragBegan, attention[id] != nil { stopSeekingAttention() }  // noticed!
         if pets[i].role == .own, event == .pressed || event == .click,
            let until = annoyedUntil[id], clock < until { return }  // storming off: presses and clicks are ignored
         if event == .click, pets[i].role == .own, noteClick(i) { return }  // this click made it annoyed
@@ -292,6 +302,22 @@ public struct Playground: Sendable {
         if case .dragEnded(let velocity) = event, pets[i].role == .own, hypot(velocity.dx, velocity.dy) > 400 {
             thrownByUser.insert(id)
         }
+    }
+
+    /// A Pomodoro focus is done: the pet cheers (waking up if need be).
+    public mutating func celebrate(_ id: UUID) {
+        guard let i = index(of: id) else { return }
+        pets[i].brain.noteInteraction()
+        pets[i].perform(Script(anim: .cheer, end: .animationFinished, priority: 2))
+        feel(.joyous, i)
+    }
+
+    /// A Pomodoro break is over: the pet hops to get the user's attention.
+    public mutating func nudge(_ id: UUID) {
+        guard let i = index(of: id) else { return }
+        pets[i].brain.noteInteraction()
+        pets[i].perform(Script(anim: .react, end: .animationFinished, priority: 2))
+        feel(.surprised, i)
     }
 
     mutating func feel(_ emotion: Emotion, _ i: Int) {
@@ -378,6 +404,7 @@ public struct Playground: Sendable {
         socialRules(dt: dt, world: world)
         feedingRules(world: world)
         fetchRules(world: world)
+        attentionRules(dt: dt)
         passingRules(dt: dt, world: world)
     }
 
@@ -393,7 +420,7 @@ public struct Playground: Sendable {
         let finished = pet.animator.finished && pet.animator.kind == pet.brain.pose.anim
             && pet.poseToken == pet.brain.pose.token
         let context = BrainContext(dt: dt, world: world, cursor: cursor,
-                                   cursorMode: pet.role == .own ? cursorMode : .off,
+                                   cursorMode: pet.role != .own ? .off : attention[pet.id] != nil ? .follow : cursorMode,
                                    halfWidth: pet.halfWidth, animationFinished: finished,
                                    timeOfDay: timeOfDay, reduceMotion: reduceMotion,
                                    calm: (calmedUntil[pet.id] ?? 0) > clock,

@@ -20,6 +20,17 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   come from the catch game (and evolution) — up to 12.
 - **Click** a pet to make it happy; **drag** it to pick it up and let go (or throw it — thrown pets knock others over and
   land dizzy). Click one five times in a row and it gets annoyed, glares at you and storms off.
+- **Right-click** (or ⌃-click) a pet for its menu: **every pet can carry its own Pomodoro timer**. Start 💼 Focus
+  (25 min), ☕️ Short Break (5 min), Long Break (15 min) or one of your own sessions — or **Start a Task…**: a little field
+  right above the pet takes the task ("Write the report") and its time in minutes, and Return starts it; the task shows
+  next to the countdown. While a session runs, **Edit Task & Time Left…** changes both, and **Add 5 Minutes** /
+  **Take Off 5 Minutes** adjust the time. When a session ends the pet cheers, you get
+  a notification with a sound, and the pet comes running to the mouse pointer and hops about until you click it (or
+  open its menu, or a minute passes). By default breaks start by themselves (a long one after every fourth focus) and
+  the next focus waits for you. Pause, skip, stop or start another session from the same menu, or from the pet's entry
+  in the paw menu (which also shows its countdown). Timers keep running across restarts. **Preferences → Pomodoro**:
+  your sessions (rename the built-ins, add your own **work** and **relax** sessions with their lengths — work counts as
+  focus), the long-break rhythm, what starts automatically, attention-seeking, notifications and sound.
 - **Stroke** a pet by rubbing the cursor back and forth over it: hearts. Sleeping pets sleep on, happily.
 - Pets show how they feel in little **bubbles** with their Pokémon portrait (happy, joyous, sad, angry, surprised, hurt, dizzy).
 - Pets wander along the Dock, the bottom of the screen, the tops of your windows and over to your other monitors — they like
@@ -35,7 +46,8 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   uneaten ones spoil after 90 seconds.
 - **Play Fetch** drops a ball: pets race for it and the winner brings it back to below your cursor. A game of
   fetch lasts one minute, then the ball fades away.
-- **Evolution:** after 15 treats and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
+- **Evolution:** after 15 treats, 50 finished Pomodoro focus sessions with it carrying the timer (the number is set in
+  Preferences → Pomodoro) and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
   per possible evolution; evolution data comes from [PokeAPI](https://pokeapi.co)).
 - **Start Catch Game** (⌃⌥G by default, from any app): a 60-second round where wild Pokémon run — or fly — across the screen. Press, flick and
   release to throw; a dotted arc shows where it will go. Hits score 25, catches 100; **legendaries** (rare) are worth 3×,
@@ -52,12 +64,16 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - PokeToy lives in the menu bar (no Dock icon). The paw icon's menu:
   - **Show / Hide Pets** (⌃⌥H by default, from any app), **Feed**, **Play Fetch**, **Start / End Catch Game**,
     **Pokédex…**
-  - **Pets** — best friend, evolution progress / Evolve, Release
+  - **Pets** — how many are out; per pet its timer, best friend, evolution progress / Evolve, **Return to Poké Ball** /
+    **Let Out**, Release; plus **Return All to Poké Balls** / **Let All Out**. A pet in its Poké Ball is off the screen
+    but keeps its friends, progress and timer — so you choose how many pets are out. Returning is animated (a Poké
+    Ball pops up, the pet turns red and shrinks into it, the ball wobbles and clicks shut), and so is letting out (a ball
+    drops in, bursts open in a white flash and the pet grows out of it).
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×
   - **Pets…** — rename your pets (the name stays when they evolve) and see their stats: species, together since,
     treats eaten, best friend, evolution progress; release one from here too.
-  - **Preferences…** — pet speed; how quickly pets nap (often, normal, rarely, never); all screens or the main screen
+  - **Preferences…** — *General*, *Shortcuts & Hiding* and *Pomodoro* sections: pet speed; how quickly pets nap (often, normal, rarely, never); all screens or the main screen
     only; the Feed, Catch Game and Show/Hide shortcuts (record your own — they need ⌃ or ⌥ — or clear them); hide pets while an app is full
     screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); launch at login;
     battery saver (30 fps on battery, paused while the screen is locked).

@@ -8,7 +8,7 @@ public struct EvolutionNode: Equatable, Sendable {
 }
 
 public enum Evolution {
-    /// Treats a pet must eat (plus having a best friend) before it can evolve.
+    /// Treats a pet must eat (plus finishing enough Pomodoro focus sessions, and having a best friend) to evolve.
     public static let treatsNeeded = 15
 
     /// Parses a PokeAPI `evolution-chain` document.
@@ -26,8 +26,8 @@ public enum Evolution {
         return []
     }
 
-    public static func isReady(treatsEaten: Int, hasBestFriend: Bool) -> Bool {
-        treatsEaten >= treatsNeeded && hasBestFriend
+    public static func isReady(treatsEaten: Int, focusSessions: Int, focusSessionsNeeded: Int, hasBestFriend: Bool) -> Bool {
+        treatsEaten >= treatsNeeded && focusSessions >= focusSessionsNeeded && hasBestFriend
     }
 
     /// The national dex number in a SpriteCollab path such as `0133/0000/0001`.
