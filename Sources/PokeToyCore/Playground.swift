@@ -175,6 +175,8 @@ public struct Playground: Sendable {
     var windowMotion: [Int: WindowMotion] = [:]
     var parades: [Parade] = []
     var paradeTimer = Playground.paradeInterval
+    /// After a successful parade roll: seconds left to find a moment when a group is free.
+    var paradeWindow: Double = 0
     public var timeOfDay: TimeOfDay = .day
     /// The system "Reduce motion" setting.
     public var reduceMotion = false

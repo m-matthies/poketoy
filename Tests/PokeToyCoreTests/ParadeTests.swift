@@ -73,7 +73,10 @@ import Testing
 
     @Test func paradesStartByThemselves() {
         var (playground, _) = friends()
-        let result = playUntil(&playground, seconds: 400) { p, _ in !p.parades.isEmpty }
+        // Follow mode keeps them awake and free near the cursor (sleeping pets can't parade).
+        let result = playUntil(&playground, seconds: 400, cursor: CGPoint(x: 340, y: 60), mode: .follow) { p, _ in
+            !p.parades.isEmpty
+        }
         #expect(result.met)
     }
 }

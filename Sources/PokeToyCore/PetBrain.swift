@@ -139,6 +139,8 @@ public struct PetBrain: Sendable {
     public static let scriptTimeout = 30.0
     /// Chance that a wandering pet heads for the active window instead of a random spot.
     public static let activeWindowPreference = 0.6
+    /// Chance that a pet wandering on a screen's floor heads over to a neighbouring screen.
+    public static let otherScreenChance = 0.15
 
     public let personality: Personality
     public private(set) var state: State = .idle(remaining: 1)
@@ -498,6 +500,10 @@ public struct PetBrain: Sendable {
            headFor(activeWindow: active, from: surface, ctx, &body) {
             return
         }
+        if personality == .pet, surface.kind == .floor, rng.unit() < Self.otherScreenChance,
+           headForNeighbourScreen(from: surface, ctx, &body) {
+            return
+        }
         let roll = rng.unit()
         var jumpChance = personality == .wild ? 0.35 : (onActive ? 0.03 : 0.2)
         if ctx.timeOfDay == .morning { jumpChance += 0.1 }
@@ -555,6 +561,34 @@ public struct PetBrain: Sendable {
         let target = nearest.midX < p.x ? surface.minX - ctx.halfWidth * 2 : surface.maxX + ctx.halfWidth * 2
         state = .walk(targetX: target, speed: speed)
         walk(toward: target, speed: speed, dt: ctx.dt, &body)
+        return true
+    }
+
+    /// Wanders over to a screen whose floor touches this floor's end: walks off the end if that floor is
+    /// level or lower, or jumps up to it if it's higher and within reach. Returns false if there's none.
+    private mutating func headForNeighbourScreen(from floor: Surface, _ ctx: BrainContext, _ body: inout Body) -> Bool {
+        let neighbours = ctx.world.surfaces.filter {
+            $0.kind == .floor && (abs($0.minX - floor.maxX) <= 2 || abs($0.maxX - floor.minX) <= 2)
+        }
+        guard !neighbours.isEmpty else { return false }
+        let pick = neighbours[min(Int(rng.unit() * Double(neighbours.count)), neighbours.count - 1)]
+        // On that side of the border, the highest floor is the one a pet would stand on.
+        let toRight = abs(pick.minX - floor.maxX) <= 2
+        guard let target = neighbours.filter({ (abs($0.minX - floor.maxX) <= 2) == toRight }).max(by: { $0.y < $1.y })
+        else { return false }
+        let p = body.position
+        if target.y <= floor.y + 2 {
+            let exit = toRight ? floor.maxX + ctx.halfWidth * 2 : floor.minX - ctx.halfWidth * 2
+            var speed = Self.walkSpeed
+            if ctx.reduceMotion { speed *= 0.7 }
+            state = .walk(targetX: exit, speed: speed)
+            walk(toward: exit, speed: speed, dt: ctx.dt, &body)
+            return true
+        }
+        guard !ctx.reduceMotion, target.y - p.y <= Self.maxJumpRise, target.distance(toX: p.x) <= Self.maxJumpReach
+        else { return false }
+        let landing = toRight ? target.minX + ctx.halfWidth * 3 : target.maxX - ctx.halfWidth * 3
+        launch(to: target, x: landing, halfWidth: ctx.halfWidth, &body)
         return true
     }
 

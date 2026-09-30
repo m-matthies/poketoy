@@ -93,8 +93,8 @@ ending in the national dex number (= SpriteCollab's 4-digit id).
 
 ## Follow-the-leader
 
-- Every 45 s, with probability 0.4, if an own pet is free and at least two of its friends (level
-  ≥ friend) are free on the same surface, a **parade** starts: the leader walks to the far end
+- Every 45 s, with probability 0.4, the pets get 10 s to find a moment when an own pet and at least
+  two of its friends (level ≥ friend) are free on the same surface; then a **parade** starts: the leader walks to the far end
   of the surface (the end with more room) at 0.8× speed; each friend follows the pet ahead,
   keeping `halfWidths + 6` pt behind it. It lasts until the leader arrives or 12 s pass. Each
   follower gains +1 friendship with the leader. Interrupting any participant ends the parade

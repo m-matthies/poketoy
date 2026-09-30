@@ -15,6 +15,8 @@ extension Playground {
     static let paradeChance = 0.4
     static let paradeLength = 12.0
     static let paradeGap: CGFloat = 6
+    /// How long pets keep looking for a moment to start a parade once the roll succeeded.
+    static let paradeLookout = 10.0
 
     mutating func paradeRules(dt: Double) {
         guard game == nil else {
@@ -24,9 +26,15 @@ extension Playground {
         paradeTimer -= dt
         if paradeTimer <= 0 {
             paradeTimer = Self.paradeInterval
+            if rng.unit() < Self.paradeChance { paradeWindow = Self.paradeLookout }
+        }
+        if paradeWindow > 0 {
+            // Friends are often busy playing; keep looking for a moment when a group is free.
+            paradeWindow -= dt
             let candidates = pets.indices.filter(isParadeReady)
-            if !candidates.isEmpty, rng.unit() < Self.paradeChance {
-                startParade(from: candidates[min(Int(rng.unit() * Double(candidates.count)), candidates.count - 1)])
+            if !candidates.isEmpty,
+               startParade(from: candidates[min(Int(rng.unit() * Double(candidates.count)), candidates.count - 1)]) {
+                paradeWindow = 0
             }
         }
 
