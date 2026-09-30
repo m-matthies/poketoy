@@ -9,10 +9,14 @@ final class ResultsWindowController: NSWindowController {
     private var checkboxes: [NSButton] = []
     /// Portrait icons next to the catches, filled in as they load.
     private var icons: [NSImageView] = []
+    private let keepable: Int
+    private var keepButton: NSButton!
+    private var releaseButton: NSButton!
 
     init(model: AppModel, results: CatchResults, best: Int, isNewBest: Bool, keepable: Int) {
         self.model = model
         self.results = results
+        self.keepable = keepable
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 220), styleMask: [.titled, .closable],
                               backing: .buffered, defer: false)
         window.title = "Catch Results"
@@ -27,12 +31,12 @@ final class ResultsWindowController: NSWindowController {
         if results.catches.isEmpty {
             rows.append(NSTextField(labelWithString: "Nothing caught this time."))
         } else {
-            rows.append(NSTextField(labelWithString: "Caught — tick the ones to keep as pets:"))
-            for (index, record) in results.catches.enumerated() {
+            rows.append(NSTextField(labelWithString: "Caught — tick the ones you want to keep as pets:"))
+            for record in results.catches {
                 let title = record.isShiny ? "✦ \(record.displayName) (Shiny)" : record.displayName
-                let box = NSButton(checkboxWithTitle: title, target: nil, action: nil)
-                box.state = index < keepable ? .on : .off
-                box.isEnabled = index < keepable
+                // Nothing is kept unless ticked.
+                let box = NSButton(checkboxWithTitle: title, target: self, action: #selector(tickChanged))
+                box.state = .off
                 checkboxes.append(box)
                 let icon = NSImageView(image: NSImage(systemSymbolName: "circle.dotted", accessibilityDescription: nil) ?? NSImage())
                 icon.imageScaling = .scaleProportionallyUpOrDown
@@ -46,13 +50,17 @@ final class ResultsWindowController: NSWindowController {
                 rows.append(row)
             }
             if keepable < results.catches.count {
-                rows.append(NSTextField(labelWithString: "You can keep \(keepable) more (limit \(Playground.maxOwnPets) pets)."))
+                let room = keepable == 0 ? "You have no room for more pets" : "You can keep \(keepable) of them"
+                rows.append(NSTextField(labelWithString: "\(room) (limit \(Playground.maxOwnPets) pets; "
+                                        + "pets in their Poké Balls count too)."))
             }
         }
         let keep = NSButton(title: results.catches.isEmpty ? "OK" : "Keep Selected", target: self, action: #selector(keepSelected))
-        keep.keyEquivalent = "\r"
         let release = NSButton(title: "Release All", target: self, action: #selector(releaseAll))
         release.isHidden = results.catches.isEmpty
+        keepButton = keep
+        releaseButton = release
+        updateChoice()
         let buttons = NSStackView(views: [release, keep])
         buttons.orientation = .horizontal
         rows.append(buttons)
@@ -99,6 +107,30 @@ final class ResultsWindowController: NSWindowController {
         NSApp.activate()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    private var ticked: Set<Int> {
+        Set(checkboxes.indices.filter { checkboxes[$0].state == .on })
+    }
+
+    @objc private func tickChanged() {
+        updateChoice()
+    }
+
+    /// Keeps the boxes within the pet limit, and the buttons in step: Return keeps what's ticked, or releases all.
+    private func updateChoice() {
+        let ticked = self.ticked
+        for (box, allowed) in zip(checkboxes, CatchGame.tickable(ticked: ticked, count: checkboxes.count, keepable: keepable)) {
+            box.isEnabled = allowed
+        }
+        guard !results.catches.isEmpty else {
+            keepButton.keyEquivalent = "\r"
+            return
+        }
+        keepButton.title = ticked.isEmpty ? "Keep Selected" : ticked.count == 1 ? "Keep 1 Pokémon" : "Keep \(ticked.count) Pokémon"
+        keepButton.isEnabled = !ticked.isEmpty
+        keepButton.keyEquivalent = ticked.isEmpty ? "" : "\r"
+        releaseButton.keyEquivalent = ticked.isEmpty ? "\r" : ""
     }
 
     @objc private func keepSelected() {

@@ -54,7 +54,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   **shinies** (1 in 64, they sparkle) 2×, and consecutive hits build a **combo** (up to 2× points) that upgrades your ball to
   a **Great Ball** after 3 hits and an **Ultra Ball** after 5 (better catch chances) — a miss resets it. Catching with the
   first ball that hit is worth a +50 bonus. **⌃-click** (or right-click) to throw one of your 3 **Razz Berries**: it calms a
-  wild Pokémon (slower, unafraid, easier to catch). Afterwards, pick which catches to keep as pets. Esc or the **End**
+  wild Pokémon (slower, unafraid, easier to catch). Afterwards, tick the catches you want to keep as pets (none are ticked to start with; the rest are released). Esc or the **End**
   button ends the round early.
 - Each round brings at least 10 different wild Pokémon, species you don't have yet first; they walk in from the screen
   edges or pop up anywhere on the floor or on top of windows, and one you've caught doesn't come back that round.
