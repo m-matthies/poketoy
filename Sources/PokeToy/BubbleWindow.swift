@@ -17,6 +17,7 @@ final class BubbleWindow: NSPanel {
         hidesOnDeactivate = false
         ignoresMouseEvents = true
         isReleasedWhenClosed = false
+        CapturePolicy.apply(to: self)  // out of screen sharing when the player wants
         contentView = bubbleView
     }
 
@@ -90,6 +91,7 @@ final class BadgeWindow: NSPanel {
         hidesOnDeactivate = false
         ignoresMouseEvents = true
         isReleasedWhenClosed = false
+        CapturePolicy.apply(to: self)  // out of screen sharing when the player wants
         pill.wantsLayer = true
         pill.layer?.cornerRadius = 9
         pill.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
@@ -151,6 +153,7 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
+        CapturePolicy.apply(to: self)  // out of screen sharing when the player wants
         let background = NSVisualEffectView()
         background.material = .popover
         background.state = .active

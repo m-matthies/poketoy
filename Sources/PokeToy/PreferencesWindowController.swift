@@ -16,6 +16,8 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     private var shortcutButtons: [ShortcutAction: NSButton] = [:]
     private var shortcutNotes: [ShortcutAction: NSTextField] = [:]
     private let fullScreen = NSButton(checkboxWithTitle: "Hide pets while an app is full screen", target: nil, action: nil)
+    private let screenSharing = NSButton(checkboxWithTitle: "Keep pets out of screen sharing and screenshots "
+                                         + "(and hide them while a listed app shares the screen)", target: nil, action: nil)
     private let appsTable = NSTableView()
     private let loginItem = NSButton(checkboxWithTitle: "Launch PokeToy at login", target: nil, action: nil)
     private let loginNote = NSTextField(labelWithString: "")
@@ -150,7 +152,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         battery.action = #selector(batteryChanged)
 
         let general = section([generalGrid, separator(), loginItem, loginNote, battery])
-        let hiding = section([grid, separator(), fullScreen, appsLabel, appsScroll, stack([add, remove, restore])])
+        let hiding = section([grid, separator(), fullScreen, screenSharing, appsLabel, appsScroll,
+                              stack([add, remove, restore])])
+        screenSharing.target = self
+        screenSharing.action = #selector(screenSharingChanged)
         let pomodoro = section([
             NSTextField(labelWithString: "Sessions (work sessions count as focus, relax ones as breaks):"),
             sessionsList(), pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound,
@@ -445,6 +450,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             shortcutNotes[action]?.textColor = recording == action ? .secondaryLabelColor : .systemRed
         }
         fullScreen.state = prefs.hideInFullScreen ? .on : .off
+        screenSharing.state = prefs.hideFromScreenSharing ? .on : .off
         appsTable.reloadData()
         if !(window?.firstResponder is NSTextView) { sessionsTable.reloadData() }  // not while a name is typed
         updateRemoveButton()
@@ -490,6 +496,11 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     @objc private func fullScreenChanged() {
         let on = fullScreen.state == .on
         model.updatePreferences { $0.hideInFullScreen = on }
+    }
+
+    @objc private func screenSharingChanged() {
+        let on = screenSharing.state == .on
+        model.updatePreferences { $0.hideFromScreenSharing = on }
     }
 
     @objc private func batteryChanged() {

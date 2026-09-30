@@ -29,6 +29,7 @@ final class BallAnimationWindow: NSPanel {
         hidesOnDeactivate = false
         ignoresMouseEvents = true
         isReleasedWhenClosed = false
+        CapturePolicy.apply(to: self)  // out of screen sharing when the player wants
         contentView = animationView
     }
 

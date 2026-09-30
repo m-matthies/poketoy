@@ -176,6 +176,7 @@ final class AppModel {
     /// Pushes the preferences into the playground, the world, the shortcuts and the tick rate.
     private func applyPreferences() {
         let prefs = settings.preferences
+        CapturePolicy.excluded = prefs.hideFromScreenSharing
         playground.petSpeed = CGFloat(prefs.petSpeed)
         playground.napAfter = prefs.naps.seconds
         if worldMonitor.mainScreenOnly != (prefs.screens == .main) {
@@ -519,8 +520,10 @@ final class AppModel {
     }
 
     private func updateAutoHide() {
+        let sharing = AutoHide.isSharingScreen(worldMonitor.floatingWindows, preferences: settings.preferences,
+                                               screens: worldMonitor.screenRectsTopLeft)
         let hide = autoHideState.update(frontmost: worldMonitor.frontmostBundleID,
-                                        isFullScreen: worldMonitor.frontmostIsFullScreen,
+                                        isFullScreen: worldMonitor.frontmostIsFullScreen, sharing: sharing,
                                         preferences: settings.preferences, gameRunning: isGameRunning)
         guard hide != autoHidden else { return }
         autoHidden = hide

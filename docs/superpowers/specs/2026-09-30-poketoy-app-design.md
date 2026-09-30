@@ -59,3 +59,12 @@ Pets window rename, battery switch, lock screen.
 - Menus: About and Release… (with confirmation) in the paw menu; shortcuts on Space, arrows and F-keys show in menus;
   Undo/Redo work in text fields. Feeding with the pointer on a screen pets don't use drops the treat on one they do.
 - Battery saver also pauses during fast user switching. Naps "never" still lets pets doze while the user is away.
+
+## Screen sharing (added)
+
+- `Preferences.hideFromScreenSharing` (on by default), "Keep pets out of screen sharing and screenshots":
+  - every overlay window (pets, bubbles, countdowns, treats, task editor, Poké Ball animations, catch-game overlays) is
+    marked not capturable (`sharingType = .none`, `CapturePolicy`), so screen sharing and screenshots leave it out;
+  - as a backup (capture exclusion may not be honoured by every capture method), pets auto-hide while a listed app
+    (Zoom, Teams, Webex, …) shows a floating window above the normal layer that isn't a menu bar icon — its sharing
+    toolbar (`AutoHide.isSharingScreen`). Showing pets anyway works as for the other auto-hide rules.

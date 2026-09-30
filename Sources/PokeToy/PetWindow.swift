@@ -36,6 +36,7 @@ final class PetWindow: NSPanel {
         hidesOnDeactivate = false
         isMovable = false
         isReleasedWhenClosed = false
+        CapturePolicy.apply(to: self)  // out of screen sharing when the player wants
         becomesKeyOnlyIfNeeded = true
         ignoresMouseEvents = true
         contentView = petView

@@ -178,3 +178,44 @@ import Testing
         #expect(FramePacing.interval(onBattery: true, batterySaver: false) == 1.0 / 60)
     }
 }
+
+@Suite struct ScreenSharingTests {
+    let screens = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
+
+    func window(_ app: String, layer: Int, _ rect: CGRect) -> SharingWindow {
+        SharingWindow(bundleID: app, layer: layer, bounds: rect)
+    }
+
+    @Test func zoomsFloatingShareToolbarMeansSharing() {
+        let toolbar = window("us.zoom.xos", layer: 3, CGRect(x: 500, y: 40, width: 420, height: 50))
+        #expect(AutoHide.isSharingScreen([toolbar], preferences: Preferences(), screens: screens))
+    }
+
+    @Test func ordinaryWindowsAndMenuBarIconsDont() {
+        let meeting = window("us.zoom.xos", layer: 0, CGRect(x: 100, y: 100, width: 800, height: 600))
+        let menuBarIcon = window("us.zoom.xos", layer: 25, CGRect(x: 1200, y: 0, width: 30, height: 24))
+        let otherFloating = window("com.apple.Safari", layer: 3, CGRect(x: 500, y: 40, width: 420, height: 50))
+        #expect(!AutoHide.isSharingScreen([meeting, menuBarIcon, otherFloating], preferences: Preferences(), screens: screens))
+    }
+
+    @Test func sharingHidesPetsUnlessTurnedOff() {
+        var prefs = Preferences()
+        #expect(prefs.hideFromScreenSharing)
+        #expect(AutoHide.shouldHide(frontmost: "com.apple.Safari", isFullScreen: false, sharing: true, preferences: prefs))
+        prefs.hideFromScreenSharing = false
+        #expect(!AutoHide.shouldHide(frontmost: "com.apple.Safari", isFullScreen: false, sharing: true, preferences: prefs))
+        #expect(!AutoHide.isSharingScreen([window("us.zoom.xos", layer: 3, CGRect(x: 500, y: 40, width: 420, height: 50))],
+                                          preferences: prefs, screens: screens))
+    }
+
+    @Test func showingPetsAnywayAlsoWorksWhileSharing() {
+        var state = AutoHideState()
+        let prefs = Preferences()
+        let hidden = state.update(frontmost: "com.apple.Safari", isFullScreen: false, sharing: true, preferences: prefs,
+                                  gameRunning: false)
+        state.userShowed(frontmost: "com.apple.Safari")
+        let shown = state.update(frontmost: "com.apple.Safari", isFullScreen: false, sharing: true, preferences: prefs,
+                                 gameRunning: false)
+        #expect(hidden && !shown)
+    }
+}
