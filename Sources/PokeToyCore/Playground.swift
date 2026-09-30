@@ -265,7 +265,9 @@ public struct Playground: Sendable {
     }
 
     /// Rules that direct pets before they move (catch game, social moments, feeding).
-    mutating func rulesBeforePhysics(dt: Double, world: World) {}
+    mutating func rulesBeforePhysics(dt: Double, world: World) {
+        feedingRules(world: world)
+    }
 
     /// Rules that react to where things ended up (collisions, Poké Ball hits).
     mutating func rulesAfterPhysics(dt: Double, world: World) {}
