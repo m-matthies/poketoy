@@ -32,6 +32,8 @@ public struct Item: Identifiable, Sendable {
     public internal(set) var state: State
     /// Seconds a treat has been lying around untouched.
     public internal(set) var age: Double = 0
+    /// Seconds since the item appeared, whatever happened to it (a fetch session lasts `Playground.fetchLength`).
+    public internal(set) var playTime: Double = 0
 
     public init(id: UUID = UUID(), kind: ItemKind, body: Body, state: State = .free) {
         self.id = id

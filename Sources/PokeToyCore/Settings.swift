@@ -52,14 +52,15 @@ public struct Settings: Codable, Equatable, Sendable {
     public var pokedex: [String: PokedexEntry]
     /// Best daily-challenge score by day (`yyyy-MM-dd`).
     public var dailyBest: [String: Int]
+    /// False until the player has picked their first Pokémon (a fresh start or after a reset).
+    public var starterChosen: Bool
 
-    public static let defaultPet = PetRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000025")!,
-                                             spritePath: "0025", displayName: "Pikachu")
-    public static let `default` = Settings(pets: [defaultPet], hidden: false, cursorMode: .off, scale: 2)
+    /// A fresh start: no pets until a starter is chosen.
+    public static let `default` = Settings(pets: [], hidden: false, cursorMode: .off, scale: 2, starterChosen: false)
 
     public init(pets: [PetRecord], hidden: Bool, cursorMode: CursorMode, scale: Int,
                 friendships: [String: Int] = [:], bestCatchScore: Int = 0,
-                pokedex: [String: PokedexEntry] = [:], dailyBest: [String: Int] = [:]) {
+                pokedex: [String: PokedexEntry] = [:], dailyBest: [String: Int] = [:], starterChosen: Bool = true) {
         self.pets = pets
         self.hidden = hidden
         self.cursorMode = cursorMode
@@ -68,15 +69,16 @@ public struct Settings: Codable, Equatable, Sendable {
         self.bestCatchScore = bestCatchScore
         self.pokedex = pokedex
         self.dailyBest = dailyBest
+        self.starterChosen = starterChosen
     }
 
     private enum CodingKeys: String, CodingKey {
-        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, dailyBest
+        case pets, hidden, cursorMode, scale, friendships, bestCatchScore, pokedex, dailyBest, starterChosen
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        pets = try container.decodeIfPresent([PetRecord].self, forKey: .pets) ?? Self.default.pets
+        pets = try container.decodeIfPresent([PetRecord].self, forKey: .pets) ?? []
         hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
         cursorMode = (try? container.decodeIfPresent(CursorMode.self, forKey: .cursorMode)) ?? .off
         scale = min(max(try container.decodeIfPresent(Int.self, forKey: .scale) ?? 2, 1), 3)
@@ -84,6 +86,8 @@ public struct Settings: Codable, Equatable, Sendable {
         bestCatchScore = (try? container.decodeIfPresent(Int.self, forKey: .bestCatchScore)) ?? 0
         pokedex = (try? container.decodeIfPresent([String: PokedexEntry].self, forKey: .pokedex)) ?? [:]
         dailyBest = (try? container.decodeIfPresent([String: Int].self, forKey: .dailyBest)) ?? [:]
+        // Settings saved before starters existed belong to players who are already playing.
+        starterChosen = (try? container.decodeIfPresent(Bool.self, forKey: .starterChosen)) ?? true
     }
 
     public static func load(from defaults: UserDefaults, key: String = "settings") -> Settings {

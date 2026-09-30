@@ -90,3 +90,21 @@ extension Pokedex {
         return entries.filter { !isKnown($0) }.shuffled(using: &rng) + entries.filter(isKnown).shuffled(using: &rng)
     }
 }
+
+/// One species in the Pokédex window: caught or owned (`entry`), or only downloaded (seen).
+public struct PokedexRow: Equatable, Sendable {
+    public let key: String
+    public let displayName: String
+    public let entry: PokedexEntry?
+}
+
+extension Pokedex {
+    /// Every species caught, owned or downloaded (sprite paths, any form), by national dex number.
+    public static func rows(pokedex: [String: PokedexEntry], downloaded: [String], names: [String: String]) -> [PokedexRow] {
+        let keys = Set(pokedex.keys).union(downloaded.compactMap(key(forPath:)))
+        return keys.sorted { (Evolution.dexNumber(of: $0) ?? 0, $0) < (Evolution.dexNumber(of: $1) ?? 0, $1) }.map { key in
+            let entry = pokedex[key]
+            return PokedexRow(key: key, displayName: entry?.displayName ?? names[key] ?? "Pokémon #\(key)", entry: entry)
+        }
+    }
+}

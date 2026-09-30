@@ -84,10 +84,25 @@ import Testing
         let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, high])
         var playground = Playground(seed: 1, scale: 1)
         playground.dropToy(at: CGPoint(x: 450, y: 650))
-        play(&playground, seconds: Playground.toyLifetime - 1, world: world)
+        play(&playground, seconds: Playground.fetchLength - 1, world: world)
         #expect(toy(playground) != nil)
-        play(&playground, seconds: 2, world: world)
+        play(&playground, seconds: 2.5, world: world)
         #expect(toy(playground) == nil)
+    }
+
+    @Test func fetchLastsOneMinuteEvenWhileItsCarried() {
+        #expect(Playground.fetchLength == 60)
+        var (playground, _) = makePlayground([300])
+        playground.dropToy(at: CGPoint(x: 900, y: 60))
+        let picked = playUntil(&playground, seconds: 10, cursor: cursor) { p, _ in carrier(p) != nil }
+        #expect(picked.met)
+        // Played with (not lying around untouched), it still ends after a minute: dropped mid-carry if need be.
+        let carriedAt = playground.items.first { $0.kind == .toyBall }!.playTime
+        play(&playground, seconds: Playground.fetchLength - carriedAt - 0.5, cursor: cursor)
+        #expect(toy(playground) != nil)
+        play(&playground, seconds: 2, cursor: cursor)
+        #expect(toy(playground) == nil)
+        #expect(playground.canDropToy)
     }
 
     @Test func grabbingTheBallFromTheCarrierStopsItsWalk() {

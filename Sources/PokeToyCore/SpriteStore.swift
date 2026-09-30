@@ -95,6 +95,14 @@ public actor SpriteStore {
         }
     }
 
+    /// Deletes every downloaded sprite and portrait (bundled sprites and the catalog stay).
+    public func clearDownloads() {
+        for folder in ["sprite", "portrait"] {
+            try? FileManager.default.removeItem(at: cacheDirectory.appendingPathComponent(folder))
+        }
+        portraitsOfflineUntil = nil
+    }
+
     /// Paths (e.g. `0025/0000/0001`) of every usable cached or bundled sprite directory.
     public func cachedSpritePaths() -> [String] {
         var paths = Set<String>()

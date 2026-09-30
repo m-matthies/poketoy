@@ -408,6 +408,7 @@ public struct Playground: Sendable {
 
     private mutating func stepItems(dt: Double, world: World) {
         for i in items.indices {
+            items[i].playTime += dt
             switch items[i].state {
             case .held, .carried:
                 continue
@@ -428,7 +429,6 @@ public struct Playground: Sendable {
         }
         items.removeAll {
             if case .fading(let remaining) = $0.state { return remaining <= 0 }
-            if $0.kind == .toyBall { return $0.age > Self.toyLifetime }  // forgotten
             return $0.kind.isTreat && $0.age > Self.treatLifetime  // spoiled
         }
     }

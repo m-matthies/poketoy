@@ -76,7 +76,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(withTitle: "About PokeToy",
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(ActionItem("Add Pokémon…", key: "n") { [unowned model] in model.showPicker() })
+        appMenu.addItem(ActionItem("Choose Your First Pokémon…", enabled: { [unowned model] in model.needsStarter }) {
+            [unowned model] in model.showStarterChoice()
+        })
         let feed = ActionItem("Feed", key: "b", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
         feed.keyEquivalentModifierMask = [.control, .option]
         appMenu.addItem(feed)
@@ -93,6 +95,10 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         })
         appMenu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
         appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
+        appMenu.addItem(.separator())
+        appMenu.addItem(ActionItem("Reset Game…", enabled: { [unowned model] in model.canReset }) {
+            [unowned model] in model.confirmReset()
+        })
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit PokeToy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         addSubmenu(appMenu, to: main)
@@ -114,7 +120,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         let hidden = model.settings.hidden
         menu.addItem(ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) })
-        menu.addItem(ActionItem("Add Pokémon…") { [unowned model] in model.showPicker() })
+        if model.needsStarter {
+            menu.addItem(ActionItem("Choose Your First Pokémon…") { [unowned model] in model.showStarterChoice() })
+        }
         menu.addItem(ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() })
         menu.addItem(ActionItem("Play Fetch", enabled: { [unowned model] in model.canPlayFetch }) {
             [unowned model] in model.playFetch()
@@ -130,7 +138,8 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
 
         let pets = model.settings.pets
         if pets.isEmpty {
-            menu.addItem(NSMenuItem(title: "No pets yet", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: model.needsStarter ? "No pets yet" : "No pets — catch some in the Catch Game",
+                                    action: nil, keyEquivalent: ""))
         } else {
             menu.addItem(NSMenuItem(title: "Pets", action: nil, keyEquivalent: ""))
             for pet in pets {
@@ -179,6 +188,11 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             })
         }
         addSubmenu(sizeMenu, titled: "Size", to: menu)
+
+        menu.addItem(.separator())
+        menu.addItem(ActionItem("Reset Game…", enabled: { [unowned model] in model.canReset }) {
+            [unowned model] in model.confirmReset()
+        })
 
         if includeQuit {
             menu.addItem(.separator())

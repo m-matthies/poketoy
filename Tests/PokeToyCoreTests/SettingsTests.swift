@@ -7,10 +7,10 @@ import Testing
         UserDefaults(suiteName: "PokeToyTests-\(UUID().uuidString)")!
     }
 
-    @Test func defaultsToOnePikachu() {
+    @Test func defaultsToNoPetsUntilAStarterIsChosen() {
         let settings = Settings.load(from: freshDefaults())
         #expect(settings == .default)
-        #expect(settings.pets.map(\.spritePath) == ["0025"])
+        #expect(settings.pets.isEmpty)
         #expect(settings.scale == 2)
         #expect(settings.cursorMode == .off)
         #expect(!settings.hidden)

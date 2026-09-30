@@ -2,16 +2,6 @@ import AppKit
 import OSLog
 import PokeToyCore
 
-enum AppError: LocalizedError {
-    case tooManyPets
-
-    var errorDescription: String? {
-        switch self {
-        case .tooManyPets: return "You already have \(Playground.maxOwnPets) pets — release one first."
-        }
-    }
-}
-
 /// A wild Pokémon's catalog entry with its loaded sprites.
 private struct LoadedWild: Sendable {
     let entry: CatalogEntry
@@ -46,7 +36,7 @@ final class AppModel {
     private var gameAttempt = UUID()
     private var timer: Timer?
     private var lastTick: CFTimeInterval = 0
-    private lazy var picker = PickerWindowController(model: self)
+    private lazy var starterWindow = StarterWindowController(model: self)
     private lazy var gameUI = GameController(model: self)
     private let logger = Logger(subsystem: "local.poketoy.PokeToy", category: "app")
 
@@ -82,16 +72,26 @@ final class AppModel {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         refreshEvolutionOptions()
+        if !settings.starterChosen { showStarterChoice() }
     }
 
     // MARK: - Pets
 
-    func addPet(_ entry: CatalogEntry) async throws {
-        guard settings.pets.count < Playground.maxOwnPets else { throw AppError.tooManyPets }
+    /// A new player (or one who reset the game) still has to pick their first Pokémon.
+    var needsStarter: Bool { !settings.starterChosen }
+
+    func showStarterChoice() {
+        starterWindow.show()
+    }
+
+    /// Makes the chosen starter the first pet. The only way to get a pet besides catching one.
+    func chooseStarter(_ entry: CatalogEntry) async throws {
+        guard needsStarter else { return }
         let sprites = try await loadSprites(entry.path)
-        guard settings.pets.count < Playground.maxOwnPets else { throw AppError.tooManyPets }
+        guard needsStarter else { return }
         let record = PetRecord(spritePath: entry.path, displayName: entry.displayName)
         settings.pets.append(record)
+        settings.starterChosen = true
         recordInPokedex(record)
         if settings.hidden { setHidden(false) }
         attach(record, sprites: sprites)
@@ -359,12 +359,60 @@ final class AppModel {
         save()
     }
 
-    func showPicker() {
-        picker.show()
+    // MARK: - Reset
+
+    var canReset: Bool { !isGameRunning }
+
+    /// Asks first, then starts over: no pets, empty Pokédex, default settings, downloads deleted.
+    func confirmReset() {
+        guard canReset else { return }
+        let alert = NSAlert()
+        alert.messageText = "Reset PokeToy?"
+        alert.informativeText = "This releases all your pets, erases your Pokédex, scores, friendships and settings, "
+            + "and deletes downloaded Pokémon. Then you choose a new first Pokémon."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        resetGame()
     }
 
-    func catalog(forceRefresh: Bool) async throws -> [CatalogEntry] {
-        try await store.catalog(forceRefresh: forceRefresh)
+    private func resetGame() {
+        guard canReset else { return }
+        gameUI.closeResults()
+        for view in petViews.values { view.close() }
+        for view in itemViews.values { view.close() }
+        petViews = [:]
+        itemViews = [:]
+        wildSprites = [:]
+        rosterSpecs = [:]
+        wildPaths = [:]
+        evolutionOptions = [:]
+        evolutionLookups = []
+        evolutionFailedAt = [:]
+        evolving = []
+        settings = .default
+        playground = Playground(seed: .random(in: .min ... .max), scale: CGFloat(settings.scale))
+        settings.save(to: .standard)
+        let store = self.store
+        Task {
+            await store.clearDownloads()
+            pokedexWindow.refreshIfVisible()
+            showStarterChoice()
+        }
+    }
+
+    /// Sprite paths downloaded so far (and the bundled ones), for the Pokédex.
+    func downloadedSpritePaths() async -> [String] {
+        await store.cachedSpritePaths()
+    }
+
+    /// A species' short description ("Electric · Mouse Pokémon — …"), nil when PokeAPI can't be reached.
+    func pokemonDescription(for key: String) async -> String? {
+        guard let dex = Evolution.dexNumber(of: key) else { return nil }
+        let evolutions = evolutionStore
+        return try? await withDeadline(seconds: 5) { try await evolutions.description(of: dex) }.summary
     }
 
     /// Records current pet positions and friendships and writes settings to disk.
