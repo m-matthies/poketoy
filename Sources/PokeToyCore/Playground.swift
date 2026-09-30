@@ -294,6 +294,22 @@ public struct Playground: Sendable {
         }
     }
 
+    /// A Pomodoro focus is done: the pet cheers (waking up if need be).
+    public mutating func celebrate(_ id: UUID) {
+        guard let i = index(of: id) else { return }
+        pets[i].brain.noteInteraction()
+        pets[i].perform(Script(anim: .cheer, end: .animationFinished, priority: 2))
+        feel(.joyous, i)
+    }
+
+    /// A Pomodoro break is over: the pet hops to get the user's attention.
+    public mutating func nudge(_ id: UUID) {
+        guard let i = index(of: id) else { return }
+        pets[i].brain.noteInteraction()
+        pets[i].perform(Script(anim: .react, end: .animationFinished, priority: 2))
+        feel(.surprised, i)
+    }
+
     mutating func feel(_ emotion: Emotion, _ i: Int) {
         events.append(.emotion(petID: pets[i].id, emotion))
     }

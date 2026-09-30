@@ -8,6 +8,12 @@ protocol PetViewDelegate: AnyObject {
     func petViewDragBegan(at point: CGPoint)
     func petViewDragMoved(to point: CGPoint)
     func petViewDragEnded()
+    /// A right-click or ⌃-click.
+    func petViewContextMenu(_ event: NSEvent)
+}
+
+extension PetViewDelegate {
+    func petViewContextMenu(_ event: NSEvent) {}
 }
 
 /// Borderless transparent panel that floats above every app, on every Space, sized to the current sprite frame.
@@ -104,9 +110,18 @@ final class PetView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) {
+            mouseDownPoint = nil  // a ⌃-click is a right-click, not a press
+            delegate?.petViewContextMenu(event)
+            return
+        }
         mouseDownPoint = NSEvent.mouseLocation
         dragging = false
         delegate?.petViewPressed()
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        delegate?.petViewContextMenu(event)
     }
 
     override func mouseDragged(with event: NSEvent) {

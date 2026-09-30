@@ -79,6 +79,8 @@ final class AppModel {
     private var lastAutoHideCheck: CFTimeInterval = 0
     private var lastPowerCheck: CFTimeInterval = 0
     private var sessionInactive = false
+    private let notifier = Notifier()
+    private var lastPomodoroCheck: CFTimeInterval = 0
     private var hotKeys: [GlobalHotKey] = []
     /// Shortcuts macOS refused because another app already uses them.
     private(set) var unavailableShortcuts: Set<ShortcutAction> = []
@@ -125,6 +127,7 @@ final class AppModel {
         observeScreenLock()
         onBattery = Self.isOnBattery()
         applyPreferences()
+        if settings.pomodoro != nil { notifier.prepare() }
         refreshEvolutionOptions()
         if !settings.starterChosen { showStarterChoice() }
     }
@@ -216,6 +219,84 @@ final class AppModel {
         case .feed: feed()
         case .catchGame: if isGameRunning { endCatchGame() } else { startCatchGame() }
         case .showHide: toggleHidden()
+        }
+    }
+
+    // MARK: - Pomodoro
+
+    var pomodoro: Pomodoro? { settings.pomodoro }
+
+    /// "🍅 Focus — 12:34 left", for menus.
+    var pomodoroStatus: String? {
+        guard let timer = settings.pomodoro else { return nil }
+        if timer.isWaiting { return "☕️ Break's over — ready to focus?" }
+        let icon = timer.phase == .focus ? "🍅" : "☕️"
+        return "\(icon) \(timer.phase.title) — \(Pomodoro.clock(timer.remaining(at: Date()))) left"
+            + (timer.isPaused ? " (paused)" : "")
+    }
+
+    /// The countdown shown above the pet carrying the timer.
+    func pomodoroBadge(for id: UUID) -> String? {
+        guard let timer = settings.pomodoro, timer.petID == id else { return nil }
+        if timer.isWaiting { return "🍅 Ready?" }
+        let icon = timer.isPaused ? "⏸" : timer.phase == .focus ? "🍅" : "☕️"
+        return "\(icon) \(Pomodoro.clock(timer.remaining(at: Date())))"
+    }
+
+    func startPomodoro(_ phase: Pomodoro.Phase, on id: UUID) {
+        if var timer = settings.pomodoro {
+            timer.petID = id
+            timer.start(phase, at: Date())  // keeps the count towards the long break
+            settings.pomodoro = timer
+        } else {
+            settings.pomodoro = Pomodoro(petID: id, phase: phase, now: Date())
+        }
+        notifier.prepare()
+        save()
+    }
+
+    func pausePomodoro() {
+        settings.pomodoro?.pause(at: Date())
+        save()
+    }
+
+    func resumePomodoro() {
+        settings.pomodoro?.resume(at: Date())
+        save()
+    }
+
+    /// Ends the current focus or break now (quietly: the player chose it).
+    func skipPomodoro() {
+        _ = settings.pomodoro?.skip(at: Date())
+        save()
+    }
+
+    func stopPomodoro() {
+        settings.pomodoro = nil
+        save()
+    }
+
+    func movePomodoro(to id: UUID) {
+        settings.pomodoro?.petID = id
+        save()
+    }
+
+    /// When a focus or break runs out: the pet reacts and a notification says what's next.
+    private func checkPomodoro() {
+        guard var timer = settings.pomodoro, let outcome = timer.advance(at: Date()) else { return }
+        settings.pomodoro = timer
+        save()
+        let name = settings.pets.first { $0.id == timer.petID }?.name ?? "Your Pokémon"
+        switch outcome {
+        case .focusDone(let next):
+            playground.celebrate(timer.petID)
+            let minutes = Int(next.duration / 60)
+            notifier.post(title: "Focus done! 🍅",
+                          body: "\(name) says: time for a \(minutes)-minute \(next == .longBreak ? "long " : "")break.")
+        case .breakDone:
+            playground.nudge(timer.petID)
+            notifier.post(title: "Break's over ☕️",
+                          body: "\(name) is ready when you are — right-click it to start the next focus.")
         }
     }
 
@@ -379,6 +460,10 @@ final class AppModel {
         playground.removePet(id)
         petViews.removeValue(forKey: id)?.close()
         settings.pets.removeAll { $0.id == id }
+        if settings.pomodoro?.petID == id {
+            // The timer moves to another pet (or stops when none is left).
+            if let other = settings.pets.first { settings.pomodoro?.petID = other.id } else { settings.pomodoro = nil }
+        }
         save()
         petsChanged()
     }
@@ -828,6 +913,10 @@ final class AppModel {
         if tickCount % 60 == 1 {  // once a second is plenty for the clock and accessibility settings
             playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
             playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+        if now - lastPomodoroCheck >= 0.25 {
+            lastPomodoroCheck = now
+            checkPomodoro()
         }
         if now - lastAutoHideCheck >= 0.2 {  // 5 Hz, like the world updates
             lastAutoHideCheck = now

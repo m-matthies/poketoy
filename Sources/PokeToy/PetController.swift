@@ -15,6 +15,8 @@ final class PetController: PetViewDelegate {
     /// Created the first time the pet shows an emotion.
     private lazy var bubble = BubbleWindow()
     private var bubbleCreated = false
+    /// The Pomodoro countdown, made when this pet first carries a timer.
+    private var badge: BadgeWindow?
     private var hovering = false
     private var bubbleEmotion: Emotion?
     private var bubbleUntil: CFTimeInterval = 0
@@ -36,11 +38,13 @@ final class PetController: PetViewDelegate {
         wanted = false
         window.orderOut(nil)
         if bubbleCreated { bubble.orderOut(nil) }
+        badge?.orderOut(nil)
     }
 
     func close() {
         window.close()
         if bubbleCreated { bubble.close() }
+        badge?.close()
     }
 
     /// Shows `emotion` in a bubble for a couple of seconds: the emoji now, the portrait once it's loaded.
@@ -74,6 +78,7 @@ final class PetController: PetViewDelegate {
         guard wanted, actor.visible else {
             if window.isVisible { window.orderOut(nil) }
             if bubbleCreated, bubble.isVisible { bubble.orderOut(nil) }
+            if let badge, badge.isVisible { badge.orderOut(nil) }
             return
         }
         let now = CACurrentMediaTime()
@@ -85,8 +90,18 @@ final class PetController: PetViewDelegate {
                       hearts: pose.hearts, feet: actor.body.position, scale: actor.scale,
                       flash: CGFloat(max(0, (flashUntil - now) / Self.flashTime)))
         if !window.isVisible { window.orderFrontRegardless() }
+        var bubbleBase = window.frame.maxY - 6
+        if let text = model.pomodoroBadge(for: id) {
+            let badge = self.badge ?? BadgeWindow()
+            self.badge = badge
+            badge.show(text)
+            badge.place(centerX: actor.body.position.x, bottom: window.frame.maxY - 4, within: window.screen?.visibleFrame)
+            bubbleBase = badge.frame.maxY  // the emotion bubble goes above the countdown
+        } else if let badge, badge.isVisible {
+            badge.orderOut(nil)
+        }
         if now < bubbleUntil {
-            bubble.place(tailAt: CGPoint(x: actor.body.position.x, y: window.frame.maxY - 6),
+            bubble.place(tailAt: CGPoint(x: actor.body.position.x, y: bubbleBase),
                          within: window.screen?.visibleFrame)
         } else if bubbleCreated, bubble.isVisible {
             bubble.orderOut(nil)
@@ -122,6 +137,11 @@ final class PetController: PetViewDelegate {
 
     func petViewDragMoved(to point: CGPoint) {
         model.movePet(id, to: drag.move(to: point))
+    }
+
+    func petViewContextMenu(_ event: NSEvent) {
+        guard interactive, let menu = MenuBuilder(model: model).makePetMenu(for: id) else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: window.petView)
     }
 
     func petViewDragEnded() {
