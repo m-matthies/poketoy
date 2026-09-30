@@ -50,4 +50,22 @@ import Testing
         #expect(settings.scale == 3)
         #expect(settings.pets == Settings.default.pets)
     }
+
+    @Test func roundTripsFriendshipsAndBestScore() {
+        let defaults = freshDefaults()
+        var settings = Settings.default
+        settings.friendships = ["x+y": 4]
+        settings.bestCatchScore = 725
+        settings.save(to: defaults)
+        #expect(Settings.load(from: defaults) == settings)
+    }
+
+    @Test func toleratesBadFriendshipsAndBestScore() {
+        let defaults = freshDefaults()
+        defaults.set(Data(#"{"friendships": "nope", "bestCatchScore": "high", "scale": 1}"#.utf8), forKey: "settings")
+        let settings = Settings.load(from: defaults)
+        #expect(settings.friendships.isEmpty)
+        #expect(settings.bestCatchScore == 0)
+        #expect(settings.scale == 1)
+    }
 }
