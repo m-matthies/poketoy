@@ -1,6 +1,13 @@
 import CoreGraphics
 import Foundation
 
+/// How a pet gets to its treat.
+enum TreatRoute {
+    case walk
+    case leap(Surface)
+    case walkOff(CGFloat)
+}
+
 extension Playground {
     static let eatDistance: CGFloat = 16
     static let treatSightRange: CGFloat = 800
@@ -41,7 +48,7 @@ extension Playground {
         }
 
         // Closest pet–treat pairs first, so every pet heads for its nearest free treat and no two chase the same one.
-        var pairs: [(pet: Int, treat: Int, distance: CGFloat, jumpTo: Surface?)] = []
+        var pairs: [(pet: Int, treat: Int, distance: CGFloat, route: TreatRoute)] = []
         for i in pets.indices where isEligibleForTreat(i) {
             let pet = pets[i]
             for t in treats {
@@ -50,15 +57,9 @@ extension Playground {
                 guard dx <= Self.treatSightRange, let surfaceID = treat.body.surfaceID else { continue }
                 let distance = hypot(dx, pet.body.position.y - treat.body.position.y)
                 if pet.body.surfaceID == surfaceID {
-                    pairs.append((i, t, distance, nil))
-                } else if let surface = world.surface(id: surfaceID, containingX: treat.body.position.x) {
-                    // Treats on the active window are worth a leap of any size; elsewhere normal jump limits apply.
-                    let onActive = surfaceID == world.activeWindowID
-                    let reachable = world.reachableSurfaces(
-                        from: pet.body.position,
-                        maxRise: onActive ? .greatestFiniteMagnitude : PetBrain.maxJumpRise,
-                        maxReach: onActive ? Self.treatSightRange : PetBrain.maxJumpReach, minWidth: 0)
-                    if reachable.contains(surface) { pairs.append((i, t, distance, surface)) }
+                    pairs.append((i, t, distance, .walk))
+                } else if let route = route(for: i, to: treat, world: world) {
+                    pairs.append((i, t, distance, route))
                 }
             }
         }
@@ -76,11 +77,14 @@ extension Playground {
                 continue
             }
             if pets[i].brain.script?.priority == 1 { pets[i].endScript() }  // switch to this treat
-            if let surface = pair.jumpTo {
-                pets[i].jump(to: surface, x: treat.body.position.x)
-            } else {
+            switch pair.route {
+            case .walk:
                 pets[i].perform(Script(anim: .walk, moveTo: treat.body.position.x, speed: PetBrain.walkSpeed * 1.2,
                                        end: .arrived, priority: 1))
+            case .leap(let surface):
+                pets[i].jump(to: surface, x: treat.body.position.x)
+            case .walkOff(let x):
+                pets[i].perform(Script(anim: .walk, moveTo: x, speed: PetBrain.walkSpeed * 1.2, end: .arrived, priority: 1))
             }
         }
         // Pets whose treat went to someone closer stop chasing it.
@@ -90,6 +94,26 @@ extension Playground {
             }
         }
         treatTargets = assignment
+    }
+
+    /// How pet `i` gets to a treat lying on another surface: a leap of any height up to it, or walking off
+    /// its own surface's edge toward it (dropping down, or stepping across to the next screen).
+    private func route(for i: Int, to treat: Item, world: World) -> TreatRoute? {
+        let pet = pets[i]
+        guard let treatSurfaceID = treat.body.surfaceID,
+              let target = world.surface(id: treatSurfaceID, containingX: treat.body.position.x) else { return nil }
+        if target.y > pet.body.position.y + 20 {
+            let reachable = world.reachableSurfaces(from: pet.body.position, maxRise: .greatestFiniteMagnitude,
+                                                    maxReach: Self.treatSightRange, minWidth: 0)
+            return reachable.contains(target) ? .leap(target) : nil
+        }
+        guard let id = pet.body.surfaceID, let current = world.surface(id: id, containingX: pet.body.position.x) else {
+            return nil
+        }
+        let edge = treat.body.position.x < pet.body.position.x
+            ? current.minX - pet.halfWidth * 2
+            : current.maxX + pet.halfWidth * 2
+        return .walkOff(edge)
     }
 
     private func isEligibleForTreat(_ i: Int) -> Bool {

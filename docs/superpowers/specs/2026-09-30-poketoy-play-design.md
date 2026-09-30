@@ -356,3 +356,11 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
 - The same applies to treats: a treat lying on the active window can be reached from anywhere
   within sight range (800 pt) with one leap of any height; treats elsewhere keep the normal
   jump limits.
+
+### Treats on any surface (revised)
+
+- Pets go for treats on any surface within sight range (800 pt), not just their own surface or
+  a normal jump away: a treat higher up (on any window) is reached with one leap of any
+  height; a treat lower down or level (another window, the floor, the next screen's floor) is
+  reached by walking off the current surface's edge toward it and continuing from where the
+  pet lands. Treats beyond sight range are ignored and eventually spoil.

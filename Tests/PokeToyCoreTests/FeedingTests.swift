@@ -70,10 +70,12 @@ import Testing
     }
 
     @Test func unreachableTreatIsIgnored() {
-        let high = Surface(id: 9, minX: 300, maxX: 600, y: 600, kind: .window)
-        let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, high])
-        var (playground, ids) = makePlayground([450], world: world)
-        playground.dropTreat(.apple, at: CGPoint(x: 450, y: 650))
+        // Beyond sight range: a treat on a window 900 pt away.
+        let far = Surface(id: 9, minX: 900, maxX: 1000, y: 600, kind: .window)
+        let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, far])
+        var (playground, ids) = makePlayground([30], world: world)
+        playground.pets[0].perform(Script(anim: .sit, end: .after(100), priority: 3))  // keep it from wandering closer
+        playground.dropTreat(.apple, at: CGPoint(x: 950, y: 650))
         play(&playground, seconds: 3, world: world)
         #expect(playground.items.count == 1)
         #expect(playground.items.first?.body.surfaceID == 9)
@@ -172,5 +174,40 @@ import Testing
         let result = playUntil(&playground, seconds: 10, world: world) { _, events in eaten(events) != nil }
         #expect(result.met)
         #expect(playground.pet(ids[0])?.body.surfaceID == 7)
+    }
+
+    @Test func petsLeapUpToTreatsOnOtherWindows() {
+        let high = Surface(id: 8, minX: 300, maxX: 600, y: 700, kind: .window)  // not the active window
+        let world = World(screens: [TestWorld.screen], surfaces: [TestWorld.floor, high])
+        var (playground, ids) = makePlayground([100], world: world)
+        playground.dropTreat(.apple, at: CGPoint(x: 450, y: 750))
+        let result = playUntil(&playground, seconds: 10, world: world) { _, events in eaten(events) != nil }
+        #expect(result.met)
+        #expect(playground.pet(ids[0])?.body.surfaceID == 8)
+    }
+
+    @Test func petsDropDownToTreatsBelow() {
+        var (playground, ids) = makePlayground([], world: TestWorld.withShelf)
+        let pet = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450, y: 260))
+        play(&playground, seconds: 0.2, world: TestWorld.withShelf)
+        #expect(playground.pet(pet)?.body.surfaceID == 7)
+        playground.dropTreat(.apple, at: CGPoint(x: 800, y: 60))
+        let result = playUntil(&playground, seconds: 10, world: TestWorld.withShelf) { _, events in eaten(events) != nil }
+        #expect(result.met)
+        #expect(ids.isEmpty)
+    }
+
+    @Test func petsCrossToTreatsOnTheNextScreen() {
+        let left = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                              visibleFrame: CGRect(x: 0, y: 50, width: 1000, height: 725))
+        let right = ScreenInfo(frame: CGRect(x: 1000, y: 0, width: 1000, height: 800),
+                               visibleFrame: CGRect(x: 1000, y: 0, width: 1000, height: 775))
+        let world = World.build(screens: [left, right], windows: [], primaryScreenHeight: 800)
+        var playground = Playground(seed: 1, scale: 1)
+        playground.addPet(metrics: .uniform(), at: CGPoint(x: 900, y: 51))
+        play(&playground, seconds: 0.1, world: world)
+        playground.dropTreat(.apple, at: CGPoint(x: 1300, y: 60))
+        let result = playUntil(&playground, seconds: 12, world: world) { _, events in eaten(events) != nil }
+        #expect(result.met)
     }
 }
