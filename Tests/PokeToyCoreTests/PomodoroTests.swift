@@ -173,3 +173,27 @@ import Testing
         #expect(!options.sound && options.notifications)
     }
 }
+
+@Suite struct FocusEvolutionTests {
+    @Test func fiftyFocusSessionsByDefault() {
+        #expect(PomodoroOptions().focusSessionsToEvolve == 50)
+    }
+
+    @Test func theNumberIsClamped() throws {
+        let json = #"{"preferences": {"pomodoro": {"focusSessionsToEvolve": 0}}}"#
+        let options = try JSONDecoder().decode(Settings.self, from: Data(json.utf8)).preferences.pomodoro
+        #expect(options.focusSessionsToEvolve == PomodoroOptions.evolveRange.lowerBound)
+        let big = #"{"preferences": {"pomodoro": {"focusSessionsToEvolve": 100000}}}"#
+        #expect(try JSONDecoder().decode(Settings.self, from: Data(big.utf8)).preferences.pomodoro.focusSessionsToEvolve
+                == PomodoroOptions.evolveRange.upperBound)
+    }
+
+    @Test func petsCountTheirFocusSessions() throws {
+        let old = #"{"id": "00000000-0000-0000-0000-000000000025", "spritePath": "0025", "displayName": "Pikachu"}"#
+        var record = try JSONDecoder().decode(PetRecord.self, from: Data(old.utf8))
+        #expect(record.focusSessions == 0)
+        record.focusSessions = 7
+        let again = try JSONDecoder().decode(PetRecord.self, from: JSONEncoder().encode(record))
+        #expect(again.focusSessions == 7)
+    }
+}

@@ -30,3 +30,9 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
   skipped or stopped, or after 60 s. Seekers don't fall asleep for "user away".
 - Preferences window: sections General / Shortcuts & Hiding / Pomodoro (a segmented control; the window fits the
   section shown).
+
+## Evolution needs focus sessions (added)
+
+- A pet evolves after 15 treats, `PomodoroOptions.focusSessionsToEvolve` finished focus sessions (default 50, 1–1000,
+  set in Preferences → Pomodoro) and a best friend. `PetRecord.focusSessions` counts focuses that ran to the end while
+  that pet carried the timer (skipped ones don't count); it starts over after evolving, like the treat count.

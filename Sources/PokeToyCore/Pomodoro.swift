@@ -5,6 +5,7 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
     public static let focusRange = 1...120
     public static let breakRange = 1...60
     public static let rhythmRange = 2...10
+    public static let evolveRange = 1...1000
 
     public var focusMinutes = 25
     public var shortBreakMinutes = 5
@@ -17,6 +18,8 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
     public var sound = true
     /// Pets come to the pointer and hop about when a focus or break ends.
     public var seekAttention = true
+    /// Focus sessions a pet must finish (with its treats) before it can evolve.
+    public var focusSessionsToEvolve = 50
 
     public init() {}
 
@@ -34,7 +37,7 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case focusMinutes, shortBreakMinutes, longBreakMinutes, focusesPerLongBreak, autoStartBreaks, autoStartFocus,
-             notifications, sound, seekAttention
+             notifications, sound, seekAttention, focusSessionsToEvolve
     }
 
     public init(from decoder: Decoder) throws {
@@ -55,6 +58,7 @@ public struct PomodoroOptions: Codable, Equatable, Sendable {
         notifications = bool(.notifications, d.notifications)
         sound = bool(.sound, d.sound)
         seekAttention = bool(.seekAttention, d.seekAttention)
+        focusSessionsToEvolve = int(.focusSessionsToEvolve, d.focusSessionsToEvolve, Self.evolveRange)
     }
 }
 

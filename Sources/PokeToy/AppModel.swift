@@ -305,6 +305,12 @@ final class AppModel {
         switch outcome {
         case .focusDone(let next):
             playground.celebrate(timer.petID)
+            // A finished focus counts towards evolving the pet that carried the timer (skipped ones don't).
+            if let index = settings.pets.firstIndex(where: { $0.id == timer.petID }) {
+                settings.pets[index].focusSessions += 1
+                save()
+                petsChanged()
+            }
             title = "Focus done! 🍅"
             let rest = "a \(options.minutes(of: next))-minute \(next == .longBreak ? "long " : "")break"
             body = timer.isWaiting ? "\(name) says: time for \(rest) — right-click it to start."
@@ -512,16 +518,30 @@ final class AppModel {
 
     enum EvolutionStatus {
         case none
-        case notReady(treatsLeft: Int, needsBestFriend: Bool)
+        case notReady(treatsLeft: Int, focusSessionsLeft: Int, needsBestFriend: Bool)
         case ready([CatalogEntry])
+
+        /// "Evolves after 3 more treats, 12 more focus sessions and a best friend"
+        var waitingText: String? {
+            guard case .notReady(let treats, let sessions, let needsFriend) = self else { return nil }
+            let parts = [treats > 0 ? (treats == 1 ? "1 more treat" : "\(treats) more treats") : nil,
+                         sessions > 0 ? (sessions == 1 ? "1 more focus session" : "\(sessions) more focus sessions") : nil,
+                         needsFriend ? "a best friend" : nil].compactMap { $0 }
+            guard let last = parts.last else { return nil }
+            let list = parts.count == 1 ? last : parts.dropLast().joined(separator: ", ") + " and " + last
+            return "Evolves after " + list
+        }
     }
 
     func evolutionStatus(of id: UUID) -> EvolutionStatus {
         guard !evolving.contains(id), let record = settings.pets.first(where: { $0.id == id }),
               let options = evolutionOptions[id], !options.isEmpty else { return .none }
+        let needed = pomodoroOptions.focusSessionsToEvolve
         let hasBestFriend = bestFriendName(of: id) != nil
-        if Evolution.isReady(treatsEaten: record.treatsEaten, hasBestFriend: hasBestFriend) { return .ready(options) }
-        return .notReady(treatsLeft: max(0, Evolution.treatsNeeded - record.treatsEaten), needsBestFriend: !hasBestFriend)
+        if Evolution.isReady(treatsEaten: record.treatsEaten, focusSessions: record.focusSessions,
+                             focusSessionsNeeded: needed, hasBestFriend: hasBestFriend) { return .ready(options) }
+        return .notReady(treatsLeft: max(0, Evolution.treatsNeeded - record.treatsEaten),
+                         focusSessionsLeft: max(0, needed - record.focusSessions), needsBestFriend: !hasBestFriend)
     }
 
     /// Asks PokeAPI (cached on disk) what each pet can evolve into, for pets not known yet.
@@ -577,6 +597,7 @@ final class AppModel {
             settings.pets[index].spritePath = path
             settings.pets[index].displayName = settings.pets[index].isShiny ? "\(entry.displayName) (Shiny)" : entry.displayName
             settings.pets[index].treatsEaten = 0
+            settings.pets[index].focusSessions = 0
             recordInPokedex(settings.pets[index])
             playground.replaceMetrics(of: id, with: PetMetrics(sprites: sprites))
             petViews[id]?.replaceSprites(sprites)

@@ -22,7 +22,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
                                    target: nil, action: nil)
     // Pomodoro
     private enum PomodoroNumber: Int, CaseIterable {
-        case focus, shortBreak, longBreak, rhythm
+        case focus, shortBreak, longBreak, rhythm, evolve
     }
     private var pomodoroSteppers: [PomodoroNumber: NSStepper] = [:]
     private var pomodoroLabels: [PomodoroNumber: NSTextField] = [:]
@@ -190,11 +190,12 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     /// Focus, break lengths and the long-break rhythm, each with a stepper.
     private func pomodoroGrid() -> NSGridView {
         let titles: [PomodoroNumber: String] = [.focus: "Focus:", .shortBreak: "Short break:", .longBreak: "Long break:",
-                                                .rhythm: "Long break after:"]
+                                                .rhythm: "Long break after:", .evolve: "Evolving takes:"]
         var rows: [[NSView]] = []
         for number in PomodoroNumber.allCases {
             let range = number == .focus ? PomodoroOptions.focusRange
-                : number == .rhythm ? PomodoroOptions.rhythmRange : PomodoroOptions.breakRange
+                : number == .rhythm ? PomodoroOptions.rhythmRange
+                : number == .evolve ? PomodoroOptions.evolveRange : PomodoroOptions.breakRange
             let stepper = NSStepper()
             stepper.minValue = Double(range.lowerBound)
             stepper.maxValue = Double(range.upperBound)
@@ -240,11 +241,16 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         case .shortBreak: return options.shortBreakMinutes
         case .longBreak: return options.longBreakMinutes
         case .rhythm: return options.focusesPerLongBreak
+        case .evolve: return options.focusSessionsToEvolve
         }
     }
 
     private func pomodoroText(_ number: PomodoroNumber, _ value: Int) -> String {
-        number == .rhythm ? (value == 1 ? "1 focus" : "\(value) focuses") : "\(value) min"
+        switch number {
+        case .rhythm: return value == 1 ? "1 focus" : "\(value) focuses"
+        case .evolve: return (value == 1 ? "1 focus session" : "\(value) focus sessions") + " (and \(Evolution.treatsNeeded) treats and a best friend)"
+        default: return "\(value) min"
+        }
     }
 
     @objc private func pomodoroNumberChanged(_ sender: NSStepper) {
@@ -256,6 +262,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             case .shortBreak: prefs.pomodoro.shortBreakMinutes = value
             case .longBreak: prefs.pomodoro.longBreakMinutes = value
             case .rhythm: prefs.pomodoro.focusesPerLongBreak = value
+            case .evolve: prefs.pomodoro.focusSessionsToEvolve = value
             }
         }
         pomodoroLabels[number]?.stringValue = pomodoroText(number, value)

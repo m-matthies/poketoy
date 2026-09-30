@@ -124,19 +124,15 @@ final class PetsWindowController: NSWindowController, NSTableViewDataSource, NST
         var first: [String] = []
         if let joined = pet.joined { first.append("Together since \(dateFormatter.string(from: joined))") }
         first.append(pet.treatsEaten == 1 ? "1 treat eaten" : "\(pet.treatsEaten) treats eaten")
+        first.append(pet.focusSessions == 1 ? "1 focus session" : "\(pet.focusSessions) focus sessions")
         lines.append(first.joined(separator: " · "))
         var second: [String] = []
         second.append(model.bestFriendName(of: pet.id).map { "Best friend: \($0)" } ?? "No best friend yet")
         switch model.evolutionStatus(of: pet.id) {
         case .ready(let options):
             second.append("Ready to evolve into " + options.map(\.displayName).joined(separator: " or "))
-        case .notReady(let treatsLeft, let needsBestFriend):
-            if treatsLeft > 0 {
-                second.append("Evolves after \(treatsLeft) more treat\(treatsLeft == 1 ? "" : "s")"
-                              + (needsBestFriend ? " and a best friend" : ""))
-            } else {
-                second.append("Evolves once it has a best friend")
-            }
+        case .notReady:
+            if let text = model.evolutionStatus(of: pet.id).waitingText { second.append(text) }
         case .none:
             break
         }

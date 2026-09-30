@@ -269,11 +269,10 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                     model.evolve(pet.id, into: option)
                 })
             }
-        case .notReady(let treatsLeft, let needsBestFriend):
-            let treats = treatsLeft == 1 ? "1 more treat" : "\(treatsLeft) more treats"
-            let text = treatsLeft == 0 ? "Evolves once it has a best friend"
-                : "Evolves after \(treats)" + (needsBestFriend ? " and a best friend" : "")
-            menu.addItem(NSMenuItem(title: text, action: nil, keyEquivalent: ""))
+        case .notReady:
+            if let text = model.evolutionStatus(of: pet.id).waitingText {
+                menu.addItem(NSMenuItem(title: text, action: nil, keyEquivalent: ""))
+            }
         case .none:
             break
         }

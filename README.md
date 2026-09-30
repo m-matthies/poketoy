@@ -42,7 +42,8 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   uneaten ones spoil after 90 seconds.
 - **Play Fetch** drops a ball: pets race for it and the winner brings it back to below your cursor. A game of
   fetch lasts one minute, then the ball fades away.
-- **Evolution:** after 15 treats and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
+- **Evolution:** after 15 treats, 50 finished Pomodoro focus sessions with it carrying the timer (the number is set in
+  Preferences → Pomodoro) and with a best friend, a pet can evolve — Pets → *name* → **Evolve into …** (one item
   per possible evolution; evolution data comes from [PokeAPI](https://pokeapi.co)).
 - **Start Catch Game** (⌃⌥G by default, from any app): a 60-second round where wild Pokémon run — or fly — across the screen. Press, flick and
   release to throw; a dotted arc shows where it will go. Hits score 25, catches 100; **legendaries** (rare) are worth 3×,
