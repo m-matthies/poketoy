@@ -265,6 +265,12 @@ public struct PetBrain: Sendable {
         return true
     }
 
+    /// A flying wild Pokémon glides: shown walking through the air, facing where it goes.
+    public mutating func glide(toward dx: CGFloat) {
+        guard case .idle = state else { return }
+        setPose(.walk, dx >= 0 ? .right : .left)
+    }
+
     /// An idle pet turns to look left or right (e.g. while its window is being moved).
     public mutating func look(toward dx: CGFloat) {
         guard case .idle = state, dx != 0 else { return }

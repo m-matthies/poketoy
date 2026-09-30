@@ -40,7 +40,8 @@ final class AppModel {
     /// This round's wild Pokémon by path, and which path each spawned wild has.
     private var rosterSpecs: [String: WildSpec] = [:]
     private var wildPaths: [UUID: String] = [:]
-    private var roundIsDaily = false
+    /// The day ("yyyy-MM-dd") of a daily challenge round, fixed when it starts; nil for a normal round.
+    private var roundDailyKey: String?
     private lazy var pokedexWindow = PokedexWindowController(model: self)
     private var gameAttempt = UUID()
     private var timer: Timer?
@@ -186,10 +187,16 @@ final class AppModel {
         evolving.insert(id)
         Task {
             defer { self.evolving.remove(id) }
-            guard let sprites = try? await loadSprites(entry.path),
+            // A shiny stays shiny: it evolves into the shiny form when SpriteCollab has one.
+            var path = entry.path
+            if settings.pets.first(where: { $0.id == id })?.isShiny == true,
+               let catalog = try? await store.catalog(), catalog.contains(where: { $0.path == "\(entry.path)/0000/0001" }) {
+                path = "\(entry.path)/0000/0001"
+            }
+            guard let sprites = try? await loadSprites(path),
                   let index = settings.pets.firstIndex(where: { $0.id == id }) else { return }
-            settings.pets[index].spritePath = entry.path
-            settings.pets[index].displayName = entry.displayName
+            settings.pets[index].spritePath = path
+            settings.pets[index].displayName = settings.pets[index].isShiny ? "\(entry.displayName) (Shiny)" : entry.displayName
             settings.pets[index].treatsEaten = 0
             recordInPokedex(settings.pets[index])
             playground.replaceMetrics(of: id, with: PetMetrics(sprites: sprites))
@@ -243,13 +250,15 @@ final class AppModel {
         gameUI.beginLoading()
         let attempt = UUID()
         gameAttempt = attempt
-        roundIsDaily = daily
-        let seed = daily ? DailyChallenge.seed(for: Date()) : UInt64.random(in: .min ... .max)
+        let today = Date()
+        roundDailyKey = daily ? DailyChallenge.key(for: today) : nil
+        let seed = daily ? DailyChallenge.seed(for: today) : UInt64.random(in: .min ... .max)
         Task {
             let roster = await loadRoster(daily: daily, seed: seed)
             guard gameAttempt == attempt, gameUI.status == .loading else { return }  // cancelled meanwhile
             if roster.isEmpty {
-                gameUI.fail("Couldn't load wild Pokémon")
+                gameUI.fail(daily ? "Couldn't load today's Pokémon — the Daily Challenge needs a connection"
+                                  : "Couldn't load wild Pokémon")
             } else {
                 playground.startGame(roster: roster, seed: seed)
                 gameUI.begin()
@@ -257,12 +266,18 @@ final class AppModel {
         }
     }
 
+    /// Throws a Razz Berry, or a ball once the round's berries are used up.
     func throwBerry(from point: CGPoint, velocity: CGVector) {
-        playground.throwBerry(from: point, velocity: velocity)
+        if (playground.game?.berriesLeft ?? 0) > 0 {
+            playground.throwBerry(from: point, velocity: velocity)
+        } else {
+            playground.throwBall(from: point, velocity: velocity)
+        }
     }
 
     private func recordInPokedex(_ pet: PetRecord) {
-        Pokedex.recordPet(path: pet.spritePath, displayName: pet.displayName, into: &settings.pokedex, at: Date())
+        Pokedex.recordPet(path: pet.spritePath, displayName: pet.displayName, isShiny: pet.isShiny,
+                          into: &settings.pokedex, at: Date())
         pokedexWindow.refreshIfVisible()
     }
 
@@ -310,7 +325,8 @@ final class AppModel {
         for record in records {
             guard settings.pets.count < Playground.maxOwnPets, let sprites = wildSprites[record.path] else { continue }
             let name = record.isShiny ? "\(record.displayName) (Shiny)" : record.displayName
-            let pet = PetRecord(spritePath: record.path, displayName: name, position: record.position)
+            let pet = PetRecord(spritePath: record.path, displayName: name, position: record.position,
+                                isShiny: record.isShiny)
             settings.pets.append(pet)
             recordInPokedex(pet)
             attach(pet, sprites: sprites)
@@ -398,7 +414,10 @@ final class AppModel {
             picks = Array(regular.shuffled().prefix(DailyChallenge.regulars)) + Array(legendaries.shuffled().prefix(1))
         }
         var loaded = await loadWild(picks)
-        if loaded.count < 3 {
+        if daily {
+            // Everyone's round is the same only with the full roster: no substitutes.
+            guard !picks.isEmpty, loaded.count == picks.count else { return [] }
+        } else if loaded.count < 3 {
             // Offline or unlucky: fill up with Pokémon already on disk (the bundled Pikachu is always there).
             let names = Dictionary(catalog.map { ($0.path, $0.displayName) }, uniquingKeysWith: { first, _ in first })
             let have = Set(loaded.map(\.entry.path))
@@ -414,20 +433,30 @@ final class AppModel {
             let shinyPath = "\(wild.entry.path)/0000/0001"
             return paths.contains(shinyPath) ? CatalogEntry(path: shinyPath, displayName: wild.entry.displayName) : nil
         }
-        let shinies = await loadWild(shinyEntries)
+        // Shiny sprites and PokeAPI types load side by side, each within its own 3–3.5 s budget.
+        let dexes = Set(loaded.compactMap { Evolution.dexNumber(of: $0.entry.path) })
+        async let shinyLoad = loadWild(shinyEntries)
+        async let typeLoad = withTaskGroup(of: (Int, [String]).self) { group in
+            for dex in dexes {
+                group.addTask { (dex, (try? await withDeadline(seconds: 3) { try await evolutions.types(of: dex) }) ?? []) }
+            }
+            var types: [Int: [String]] = [:]
+            for await (dex, list) in group { types[dex] = list }
+            return types
+        }
+        let (shinies, types) = await (shinyLoad, typeLoad)
         for wild in loaded + shinies { wildSprites[wild.entry.path] = wild.sprites }
         let shinyPaths = Set(shinies.map(\.entry.path))
 
         var roster: [WildSpec] = []
         for wild in loaded {
             let dex = Evolution.dexNumber(of: wild.entry.path) ?? 0
-            let types = (try? await withDeadline(seconds: 3) { try await evolutions.types(of: dex) }) ?? []
             let shinyPath = "\(wild.entry.path)/0000/0001"
             roster.append(WildSpec(path: wild.entry.path, displayName: wild.entry.displayName,
                                    metrics: PetMetrics(sprites: wild.sprites),
                                    isLegendary: Legendaries.isLegendary(path: wild.entry.path),
                                    shinyPath: shinyPaths.contains(shinyPath) ? shinyPath : nil,
-                                   canFly: types.contains("flying")))
+                                   canFly: types[dex]?.contains("flying") ?? false))
         }
         rosterSpecs = Dictionary(roster.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
         return roster
@@ -522,12 +551,12 @@ final class AppModel {
         }
         Pokedex.record(results.catches, into: &settings.pokedex, at: Date())
         pokedexWindow.refreshIfVisible()  // right after the round, even before the results are closed
-        let daily = roundIsDaily
-        let dayKey = DailyChallenge.key(for: Date())
-        let previousBest = daily ? (settings.dailyBest[dayKey] ?? 0) : settings.bestCatchScore
+        let dayKey = roundDailyKey
+        let daily = dayKey != nil
+        let previousBest = dayKey.map { settings.dailyBest[$0] ?? 0 } ?? settings.bestCatchScore
         let isNewBest = results.score > previousBest
         if isNewBest {
-            if daily { settings.dailyBest[dayKey] = results.score } else { settings.bestCatchScore = results.score }
+            if let dayKey { settings.dailyBest[dayKey] = results.score } else { settings.bestCatchScore = results.score }
         }
         save()
         let best = max(previousBest, results.score)

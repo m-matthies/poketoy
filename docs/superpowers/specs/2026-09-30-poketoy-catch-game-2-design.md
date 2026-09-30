@@ -61,7 +61,12 @@ aiming arc, and a daily challenge.
 
 - `DailyChallenge.seed(for date:)` = yyyymmdd; `DailyChallenge.roster(from catalog:seed:)` picks 7
   regular + 1 legendary deterministically from the complete catalog entries sorted by path.
-- The game RNG uses the same seed, so spawn order and catch rolls match for everyone.
+- The game RNG uses the same seed, so spawn order and catch rolls match for everyone: the roster is
+  sorted by path, and spawns, placement and catch rolls draw from separate streams that always consume
+  the same number of values (whether or not a Pokémon has a shiny sprite or can fly).
+- The day is the Gregorian date in the local time zone, fixed when the round starts.
+- The daily challenge needs its full roster; if any of it can't be loaded (offline), it doesn't start
+  (no substitutes from the cache, no daily best).
 - `Settings.dailyBest: [String: Int]` keyed `yyyy-MM-dd`; results show "Daily best" for daily runs.
 - Menu: **Daily Challenge** next to Start Catch Game (menus and the app menu).
 
@@ -72,8 +77,8 @@ aiming arc, and a daily challenge.
   (kept or released), tolerant decoding.
 - `Pokedex.completion(caught:catalog:)` = distinct species caught / distinct species in the catalog
   with complete sprites.
-- **Pokédex…** window (menus): completion %, then a grid of caught species (Normal portrait, name,
-  first-caught date, times caught, ✦ if a shiny was caught), newest first.
+- **Pokédex…** window (menus): completion %, then a list of species (Normal portrait, name,
+  first-seen date, times caught, ✦ if a shiny was caught), newest first; it refreshes while open.
 
 ## Architecture
 
@@ -104,3 +109,13 @@ Online leaderboards, trading, item shops, sound.
 - Species also enter the Pokédex when they become pets: adopted from the picker, kept from a catch
   round, or evolved into; current pets are recorded at launch. `PokedexEntry.everOwned` marks them;
   the window shows "current pet" / "former pet" and catch counts, and pets count toward completion.
+
+### Review fixes (added)
+
+- A ball that lands inside a wild Pokémon's hit area is a hit, not a miss.
+- Catch points use the combo multiplier from the moment the ball hit.
+- Calmed wilds also dash and leave at half speed; flying wilds leave 1.5× faster and show their walk
+  animation while gliding.
+- ⇧ with no berries left throws a ball.
+- Shiny pets remember they are shiny (`PetRecord.isShiny`) and evolve into the shiny form when
+  SpriteCollab has it.

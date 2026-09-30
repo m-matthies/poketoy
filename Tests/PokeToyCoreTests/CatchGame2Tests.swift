@@ -97,4 +97,33 @@ import Testing
         #expect(uses == [true, true, true, false])
         #expect(game.berriesLeft == 0)
     }
+
+    func sequence(_ game: inout CatchGame, _ count: Int) -> [String] {
+        (0..<count).compactMap { _ in game.spawn(dt: 10, wildCount: 0) }.map { $0.spec.path }
+    }
+
+    @Test func rosterOrderDoesNotChangeTheRound() {
+        let a = WildSpec(path: "0001", displayName: "A", metrics: .uniform())
+        let b = WildSpec(path: "0004", displayName: "B", metrics: .uniform())
+        let c = WildSpec(path: "0007", displayName: "C", metrics: .uniform())
+        var first = playing([a, b, c], seed: 9)
+        var second = playing([c, a, b], seed: 9)
+        #expect(sequence(&first, 50) == sequence(&second, 50))
+        #expect(first.rollCatch().caught == second.rollCatch().caught)
+    }
+
+    @Test func optionalExtrasDoNotShiftTheRandomSequence() {
+        let plain = WildSpec(path: "0133", displayName: "Eevee", metrics: .uniform())
+        var withShiny = playing([shinyable, regular], seed: 5)
+        var withoutShiny = playing([plain, regular], seed: 5)
+        #expect(sequence(&withShiny, 50) == sequence(&withoutShiny, 50))
+        #expect((0..<20).map { _ in withShiny.rollCatch().caught } == (0..<20).map { _ in withoutShiny.rollCatch().caught })
+        #expect(withShiny.randomUnit() == withoutShiny.randomUnit())
+    }
+
+    @Test func catchesCanPayTheComboOfTheHit() {
+        var game = playing([regular])
+        game.recordCatch(CatchRecord(petID: UUID(), path: "0025", displayName: "Pikachu", position: .zero), multiplier: 1.75)
+        #expect(game.score == 175)
+    }
 }

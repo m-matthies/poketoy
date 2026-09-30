@@ -120,4 +120,60 @@ import Testing
         }
         #expect(reached)
     }
+
+    @Test func aBallLandingOnAWildIsAHit() {
+        var (playground, _) = started([regular], pets: [])
+        playUntil(&playground, seconds: 6) { p, _ in wild(p)?.body.isGrounded == true }
+        let target = wild(playground)!
+        playground.game!.recordHit()  // combo 1, so a wrongly counted miss would show
+        playground.throwBall(from: CGPoint(x: target.body.position.x, y: target.body.position.y + 20),
+                             velocity: CGVector(dx: 0, dy: -1500))  // lands this very frame
+        let events = play(&playground, seconds: 1.0 / 60)
+        #expect(events.contains(.ballHit(petID: target.id)))
+        #expect(playground.game?.combo == 2)
+    }
+
+    @Test func catchesPayTheComboOfTheHit() {
+        var (playground, _) = started([regular], pets: [])
+        playground.game!.catchChance = 1
+        playUntil(&playground, seconds: 6) { p, _ in wild(p)?.body.isGrounded == true }
+        let target = wild(playground)!
+        for _ in 0..<3 { playground.game!.recordHit() }  // the hit below makes combo 4: ×1.75
+        playground.throwBall(from: CGPoint(x: target.body.position.x, y: target.body.position.y + 10), velocity: .zero)
+        play(&playground, seconds: 1.0 / 60)
+        playground.game!.registerMiss()  // the combo breaks while the ball wobbles
+        let before = playground.game!.score
+        playUntil(&playground, seconds: 4) { _, events in events.contains(.caught(petID: target.id)) }
+        #expect(playground.game!.score - before == 175 + 50)
+    }
+
+    @Test func calmedWildsDashSlowlyAfterBreakingFree() {
+        var (playground, _) = started([regular], pets: [])
+        playground.game!.catchChance = 0
+        playUntil(&playground, seconds: 6) { p, _ in wild(p)?.body.isGrounded == true }
+        let target = wild(playground)!
+        playground.throwBerry(from: CGPoint(x: target.body.position.x, y: target.body.position.y + 10), velocity: .zero)
+        play(&playground, seconds: 1.0 / 60)
+        let now = playground.pet(target.id)!
+        playground.throwBall(from: CGPoint(x: now.body.position.x, y: now.body.position.y + 10), velocity: .zero)
+        playUntil(&playground, seconds: 4) { _, events in events.contains(.brokeFree(petID: target.id)) }
+        var top: CGFloat = 0
+        for _ in 0..<(2 * 60) {
+            play(&playground, seconds: 1.0 / 60)
+            if let pet = playground.pet(target.id), pet.body.isGrounded { top = max(top, abs(pet.body.velocity.dx)) }
+        }
+        #expect(top <= PetBrain.walkSpeed * 1.6 + 0.01)  // half of the 2× dash
+    }
+
+    @Test func flyingWildsGlideInAWalkPoseAndLeaveBriskly() {
+        var (playground, _) = started([flyer], pets: [])
+        playUntil(&playground, seconds: 5) { p, _ in wild(p) != nil }
+        let id = wild(playground)!.id
+        play(&playground, seconds: 0.2)
+        #expect(playground.pet(id)?.pose.anim == .walk)
+        let index = playground.pets.firstIndex { $0.id == id }!
+        playground.pets[index].lifetime = 0
+        let gone = playUntil(&playground, seconds: 7) { _, events in events.contains(.wildRemoved(petID: id)) }
+        #expect(gone.met)
+    }
 }

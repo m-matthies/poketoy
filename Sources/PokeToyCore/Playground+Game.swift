@@ -59,6 +59,7 @@ extension Playground {
             ballHits()
             berryHits()
         }
+        settleLandedBalls()
         advanceWobbles(dt: dt)
     }
 
@@ -79,11 +80,12 @@ extension Playground {
         let x = fromLeft ? screen.frame.minX + 40 : screen.frame.maxX - 40
         var y = screen.visibleFrame.minY + 1
         var flight: Flight?
+        let heightRoll = CGFloat(game?.randomUnit() ?? 0.5)  // drawn for every spawn, flyer or not
         if spec.canFly {
             // Glide at a random height between 150 pt above the floor and 70% of the screen.
             let low = screen.visibleFrame.minY + 150
             let high = max(low, screen.frame.minY + screen.frame.height * 0.7)
-            y = low + CGFloat(game?.randomUnit() ?? 0.5) * (high - low)
+            y = low + heightRoll * (high - low)
             flight = Flight(baseY: y, direction: fromLeft ? 1 : -1)
         }
         let id = addPet(role: .wild, metrics: spec.metrics, at: CGPoint(x: x, y: y))
@@ -108,7 +110,8 @@ extension Playground {
             if fleeBoost.contains(id), pets[i].brain.isFree {
                 let away: CGFloat = rng.unit() < 0.5 ? -1 : 1
                 pets[i].perform(Script(anim: .walk, moveTo: pets[i].body.position.x + away * 300,
-                                       speed: PetBrain.walkSpeed * 1.6 * 2, end: .after(2), priority: 2))
+                                       speed: PetBrain.walkSpeed * 1.6 * 2 * (isCalm(i) ? 0.5 : 1), end: .after(2),
+                                       priority: 2))
                 fleeBoost.remove(id)
             }
             let x = pets[i].body.position.x
@@ -122,7 +125,8 @@ extension Playground {
                 continue
             }
             guard pets[i].leaving, let exit = pets[i].exitX, (pets[i].brain.script?.priority ?? 0) < 3 else { continue }
-            pets[i].perform(Script(anim: .walk, moveTo: exit, speed: PetBrain.walkSpeed * 1.6 * 1.5, end: .arrived, priority: 3))
+            pets[i].perform(Script(anim: .walk, moveTo: exit, speed: PetBrain.walkSpeed * 1.6 * 1.5 * (isCalm(i) ? 0.5 : 1),
+                                   end: .arrived, priority: 3))
         }
     }
 
@@ -138,14 +142,13 @@ extension Playground {
             if x < screen.frame.minX + 40 { flight.direction = 1 }
             if x > screen.frame.maxX - 40 { flight.direction = -1 }
         }
-        let calmed = (calmedUntil[pets[i].id] ?? 0) > clock
-        let speed = PetBrain.walkSpeed * 1.6 * (calmed ? 0.5 : 1)
+        let speed = PetBrain.walkSpeed * 1.6 * (isCalm(i) ? 0.5 : 1) * (pets[i].leaving ? 1.5 : 1)
         flight.phase += dt * 2.5
         pets[i].body.surfaceID = nil
         pets[i].body.velocity = CGVector(dx: flight.direction * speed, dy: 0)
         pets[i].body.position = CGPoint(x: x + flight.direction * speed * CGFloat(dt),
                                         y: flight.baseY + CGFloat(sin(flight.phase)) * 40)
-        pets[i].brain.look(toward: flight.direction)
+        pets[i].brain.glide(toward: flight.direction)
         pets[i].flight = flight
     }
 
@@ -165,6 +168,20 @@ extension Playground {
 
     static let calmTime = 8.0
 
+    /// Balls that landed this step without hitting anything: a miss, which breaks the combo.
+    private mutating func settleLandedBalls() {
+        guard !landedBalls.isEmpty else { return }
+        for i in items.indices where landedBalls.contains(items[i].id) && items[i].state == .flying {
+            if game?.isPlaying == true { game?.registerMiss() }
+            items[i].state = .fading(remaining: 1.5)
+        }
+        landedBalls.removeAll()
+    }
+
+    private func isCalm(_ i: Int) -> Bool {
+        (calmedUntil[pets[i].id] ?? 0) > clock
+    }
+
     private mutating func ballHits() {
         for b in items.indices where items[b].kind.isBall && items[b].state == .flying {
             let center = CGPoint(x: items[b].body.position.x,
@@ -177,6 +194,7 @@ extension Playground {
             let outcome = game?.rollCatch(tier: tier, calmed: (calmedUntil[wildID] ?? 0) > clock)
                 ?? (caught: false, wobbles: 1)
             game?.recordHit(isLegendary: wildSpecs[wildID]?.isLegendary ?? false, isShiny: wildShiny.contains(wildID))
+            hitMultiplier[wildID] = game?.comboMultiplier
             // Never let the ball start below the wild's feet, or it could fall past the floor.
             items[b].body.position.y = max(items[b].body.position.y, pets[w].body.position.y)
             pets[w].visible = false
@@ -217,7 +235,8 @@ extension Playground {
                 let shiny = wildShiny.contains(petID)
                 let record = CatchRecord(petID: petID, path: shiny ? (spec.shinyPath ?? spec.path) : spec.path,
                                          displayName: spec.displayName, position: position, isShiny: shiny)
-                game?.recordCatch(record, isLegendary: spec.isLegendary, firstThrow: !brokeFreeOnce.contains(petID))
+                game?.recordCatch(record, isLegendary: spec.isLegendary, firstThrow: !brokeFreeOnce.contains(petID),
+                                  multiplier: hitMultiplier[petID])
             }
             removePet(petID)
             items[b].state = .fading(remaining: 0.8)

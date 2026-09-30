@@ -41,7 +41,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
   first ball that hit is worth a +50 bonus. Hold **⇧** while releasing to throw one of your 3 **Razz Berries**: it calms a
   wild Pokémon (slower, unafraid, easier to catch). Afterwards, pick which catches to keep as pets. Esc or the **End**
   button ends the round early.
-- **Daily Challenge**: the same Pokémon and the same round for everyone today, with its own best score.
+- **Daily Challenge**: the same Pokémon and the same round for everyone today, with its own best score (needs a connection).
 - **Pokédex…** lists every species you've caught or kept as a pet — current and former pets included (✦ for shinies) — and
   how complete your collection is.
 - Menu bar paw icon or right-click the Dock icon:

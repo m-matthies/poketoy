@@ -105,4 +105,22 @@ import Testing
         #expect(!entry.everOwned)
         #expect(entry.count == 2)
     }
+
+    @Test func dailyKeysUseTheGregorianCalendar() {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = .current
+        let day = date(2026, 9, 30)
+        #expect(DailyChallenge.key(for: day) == "2026-09-30")
+        #expect(buddhist.component(.year, from: day) != 2026)  // the user's own calendar doesn't matter
+    }
+
+    @Test func petRecordsKnowWhetherTheyAreShiny() throws {
+        let old = #"{"id": "00000000-0000-0000-0000-000000000025", "spritePath": "0025/0000/0001", "displayName": "Pikachu (Shiny)"}"#
+        #expect(try JSONDecoder().decode(PetRecord.self, from: Data(old.utf8)).isShiny)
+        let plain = #"{"id": "00000000-0000-0000-0000-000000000025", "spritePath": "0025", "displayName": "Pikachu"}"#
+        #expect(try !JSONDecoder().decode(PetRecord.self, from: Data(plain.utf8)).isShiny)
+        var pokedex: [String: PokedexEntry] = [:]
+        Pokedex.recordPet(path: "0026", displayName: "Raichu", isShiny: true, into: &pokedex, at: Date())
+        #expect(pokedex["0026"]?.shinyCaught == true)
+    }
 }
