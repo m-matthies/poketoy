@@ -140,7 +140,8 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
     private let unit = NSTextField(labelWithString: "min")
     private let hint = NSTextField(labelWithString: "")
     private var timeRow: NSStackView!
-    private var onDone: ((String, Int?)?) -> Void = { _ in }
+    /// Gets the name, the minutes and how the editor was left — or nil when cancelled.
+    private var onDone: ((String, Int?, TaskEdit.Commit)?) -> Void = { _ in }
     private var editing = false
     /// The editor is open.
     var isEditing: Bool { editing }
@@ -208,13 +209,16 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
     /// Shows the editor centered above `anchor` (the pet or its countdown). `minutes` nil hides the time;
     /// `done` gets the name and minutes, or nil when cancelled.
     func edit(text: String, minutes: Int?, unit unitText: String, hint hintText: String, above anchor: CGRect,
-              within bounds: CGRect?, done: @escaping ((String, Int?)?) -> Void) {
-        finish(save: false)  // a previous edit still open is dropped
+              within bounds: CGRect?, done: @escaping ((String, Int?, TaskEdit.Commit)?) -> Void) {
+        finish(nil)  // a previous edit still open is dropped
         onDone = done
         editing = true
         field.stringValue = text
         timeRow.isHidden = minutes == nil
         if let minutes {
+            // A running timer can have more time left than a new session could have (added minutes).
+            stepper.maxValue = Double(max(PomodoroOptions.sessionRange.upperBound, minutes))
+            (minutesField.formatter as? NumberFormatter)?.maximum = NSNumber(value: stepper.maxValue)
             minutesField.integerValue = minutes
             stepper.integerValue = minutes
         }
@@ -245,10 +249,10 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
-            finish(save: true)
+            finish(.returnKey)
             return true
         case #selector(NSResponder.cancelOperation(_:)):
-            finish(save: false)
+            finish(nil)
             return true
         default:
             return false
@@ -257,19 +261,26 @@ final class TaskEditorPanel: NSPanel, NSTextFieldDelegate {
 
     override func resignKey() {
         super.resignKey()
-        finish(save: true)  // clicked elsewhere: keep what was typed
+        finish(.elsewhere)  // clicked elsewhere: keep what was typed (but start nothing)
     }
 
     /// Keeps what's typed if the editor is open (e.g. PokeToy is quitting).
     func commit() {
-        finish(save: true)
+        finish(.elsewhere)
     }
 
-    private func finish(save: Bool) {
+    /// Closes the editor: `commit` says how it was left (nil: cancelled).
+    private func finish(_ commit: TaskEdit.Commit?) {
         guard editing else { return }
         editing = false
-        let minutes = timeRow.isHidden ? nil : max(PomodoroOptions.sessionRange.lowerBound, stepper.integerValue)
-        let result = save ? (field.stringValue, minutes) : nil
+        var minutes: Int?
+        if !timeRow.isHidden {
+            // What's typed, if it's a valid number; else what the arrows last said.
+            let typed = Int(minutesField.stringValue.trimmingCharacters(in: .whitespaces))
+            let range = PomodoroOptions.sessionRange.lowerBound...Int(stepper.maxValue)
+            minutes = typed.flatMap { range.contains($0) ? $0 : nil } ?? stepper.integerValue
+        }
+        let result = commit.map { (field.stringValue, minutes, $0) }
         orderOut(nil)
         onDone(result)
     }

@@ -3,6 +3,10 @@
 Date: 2026-09-30
 Request: "make rightclick a pokemon setting a pomodoro timer".
 
+> The design grew in steps, recorded in the sections below in order; where they differ, later sections win. Today:
+> every pet can carry its own timer (no single timer, no "Show Timer on This Pet"), work is 💼 (not 🍅), a released
+> pet takes its timer with it, and Release isn't in the right-click menu.
+
 - **Pet menu:** right-click (or ⌃-click) one of your pets: its name, the Pomodoro section, then best friend and
   evolution. Release stays out of it (paw menu and Pets window only), away from a quick right-click. The paw menu has the same Pomodoro section (new timers go on the first pet).
 - **Timer** (`Pomodoro`, core, persisted in `Settings.pomodoro`): Focus 25 min, Short Break 5 min, Long Break 15 min.
@@ -101,3 +105,24 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
   sleeping pet sleeps on; a pet in mid-air holds once it lands.
 - A pet is held from the right-click until its menu closes, and while its task editor is open (from either menu),
   so it can't wander off while its timer or task is being set.
+
+## Review fixes (added)
+
+- The task editor remembers what it was opened on (`TaskEditSnapshot`); saving (`TaskEdit.apply`) keeps the name
+  always, but changes the time only if the minutes were changed and the timer is still in the same phase; only
+  Return starts a focus — clicking elsewhere, quitting or pets auto-hiding just keep the name (and a blank editor
+  with no timer makes none). The arrows reach past 180 when a timer already has more left; a valid typed number wins.
+- Screen-sharing detection only looks at Zoom, Teams and Webex (`AutoHide.sharingApps`, not the hide list): a
+  see-through border window covering a screen, or a short, wide floating toolbar — not dialogs, pop-up menus, help
+  tags, invisible windows, menu bar icons (per-screen menu bar height, taller with a notch) or mini meeting windows.
+  App lookups are cached between refreshes and skipped when the option is off.
+- While PokeToy can't tick (screen locked with battery saver, or quit with timers running) the session ends are
+  scheduled with macOS; when it ticks again they're cancelled, and an end macOS already showed isn't posted twice.
+- Notifications for pets in their Poké Ball point to the paw menu; waiting timers show the current session name;
+  pets don't come looking for you during a catch round.
+- Letting a pet out that can't be shown (offline, not downloaded) puts it back in its ball; a reset or evolution
+  during the release animation is respected.
+- Releasing a pet from its Poké Ball forgets its friendships; timers of pets that no longer exist are dropped on load.
+- Catch results: Return does nothing while nothing is ticked; "Release All" asks first when a shiny was caught.
+- Preferences sessions: a name being typed is committed before the list changes and found by the session's id.
+- Notifications are skipped for a bare debug executable (no app bundle).

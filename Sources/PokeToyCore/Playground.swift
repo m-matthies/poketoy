@@ -259,6 +259,7 @@ public struct Playground: Sendable {
         }
         moments.removeAll { $0.a == id || $0.b == id }
         let wasOwn = pet(id)?.role == .own
+        let wasOnScreen = pet(id) != nil
         pets.removeAll { $0.id == id }
         treatTargets[id] = nil
         followTimers[id] = nil
@@ -277,7 +278,8 @@ public struct Playground: Sendable {
         attention[id] = nil
         fetchRacers.remove(id)
         held.remove(id)
-        if wasOwn && !keepFriendships {
+        // An own pet — also one released from its Poké Ball, so not on screen — takes its friendships with it.
+        if (wasOwn || !wasOnScreen) && !keepFriendships && friendships.points.keys.contains(where: { $0.contains(id.uuidString) }) {
             friendships.remove(id)
             events.append(.friendshipChanged)
         }

@@ -36,6 +36,7 @@ final class PetController: PetViewDelegate {
     func show() { wanted = true }
 
     func hide() {
+        taskEditor?.commit()  // an open task editor goes too (keeping what was typed)
         wanted = false
         window.orderOut(nil)
         if bubbleCreated { bubble.orderOut(nil) }
@@ -171,13 +172,14 @@ final class PetController: PetViewDelegate {
         taskEditor = editor
         let anchor = badge?.isVisible == true ? badge!.frame : window.frame
         let state = model.taskEditorState(for: id)
+        let snapshot = TaskEditSnapshot(timer: model.timer(for: id), now: Date())  // what the editor was opened on
         model.holdPet(id)  // stays right under its editor
         editor.edit(text: state.task, minutes: state.minutes, unit: state.unit, hint: state.hint, above: anchor,
                     within: window.screen?.visibleFrame) { [weak self] result in
             guard let self else { return }
             self.model.letGoPet(self.id)
-            guard let (name, minutes) = result else { return }
-            self.model.saveTask(name, minutes: minutes, on: self.id)
+            guard let (name, minutes, commit) = result else { return }
+            self.model.saveTask(name, minutes: minutes, snapshot: snapshot, committed: commit, on: self.id)
         }
     }
 

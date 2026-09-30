@@ -85,6 +85,7 @@ import Testing
 
     @Test func survivesARelaunch() throws {
         var settings = Settings.default
+        settings.pets = [PetRecord(id: pet, spritePath: "0025", displayName: "Pikachu")]
         var timer = Pomodoro(petID: pet, phase: .focus, now: start)
         timer.pause(at: at(5))
         settings.timers = [timer]
@@ -306,6 +307,8 @@ import Testing
     @Test func everyPetCanCarryItsOwnTimer() throws {
         let (a, b) = (UUID(), UUID())
         var settings = Settings.default
+        settings.pets = [PetRecord(id: a, spritePath: "0025", displayName: "Pikachu"),
+                         PetRecord(id: b, spritePath: "0004", displayName: "Charmander")]
         settings.timers = [Pomodoro(petID: a, phase: .focus, now: start), Pomodoro(petID: b, phase: .shortBreak, now: start),
                            Pomodoro(petID: a, phase: .longBreak, now: start)]  // a second one for a: dropped
         let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
@@ -314,8 +317,10 @@ import Testing
     }
 
     @Test func aSavedSingleTimerIsKept() throws {
-        let timer = Pomodoro(petID: UUID(), phase: .focus, now: start)
-        let json = "{\"pomodoro\": \(String(data: try JSONEncoder().encode(timer), encoding: .utf8)!)}"
+        let pet = PetRecord(spritePath: "0025", displayName: "Pikachu")
+        let timer = Pomodoro(petID: pet.id, phase: .focus, now: start)
+        let pets = String(data: try JSONEncoder().encode([pet]), encoding: .utf8)!
+        let json = "{\"pets\": \(pets), \"pomodoro\": \(String(data: try JSONEncoder().encode(timer), encoding: .utf8)!)}"
         #expect(try JSONDecoder().decode(Settings.self, from: Data(json.utf8)).timers == [timer])
     }
 

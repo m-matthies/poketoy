@@ -178,11 +178,13 @@ public struct SharingWindow: Equatable, Sendable {
     public var bundleID: String?
     public var layer: Int
     public var bounds: CGRect
+    public var alpha: Double
 
-    public init(bundleID: String?, layer: Int, bounds: CGRect) {
+    public init(bundleID: String?, layer: Int, bounds: CGRect, alpha: Double = 1) {
         self.bundleID = bundleID
         self.layer = layer
         self.bounds = bounds
+        self.alpha = alpha
     }
 }
 
@@ -198,15 +200,29 @@ public enum AutoHide {
         return isFullScreen && preferences.hideInFullScreen
     }
 
-    /// Whether one of the listed meeting apps seems to be sharing the screen: while sharing, Zoom, Teams and Webex
-    /// show a floating toolbar — a window above the normal layer that isn't a menu bar icon.
-    public static func isSharingScreen(_ windows: [SharingWindow], preferences: Preferences, screens: [CGRect]) -> Bool {
+    /// Meeting apps whose screen sharing is recognised.
+    public static let sharingApps: Set<String> = ["us.zoom.xos", "com.microsoft.teams2", "com.microsoft.teams",
+                                                   "Cisco-Systems.Spark"]
+    /// Window levels that are never a sharing toolbar: modal panels, pop-up menus, help tags.
+    static let ignoredLevels: Set<Int> = [8, 101, 200]
+
+    /// Whether a meeting app (Zoom, Teams, Webex) seems to be sharing the screen: it then shows a see-through border
+    /// window over the shared screen, or a floating toolbar — a short, wide window above the normal layer that isn't
+    /// a menu bar icon, dialog or menu. `menuBarHeights` are per screen (taller on displays with a camera notch).
+    public static func isSharingScreen(_ windows: [SharingWindow], preferences: Preferences, screens: [CGRect],
+                                       menuBarHeights: [CGFloat] = []) -> Bool {
         guard preferences.hideFromScreenSharing else { return false }
-        let apps = Set(preferences.hiddenWhileFrontmost.map(\.bundleID))
         return windows.contains { window in
-            guard let app = window.bundleID, apps.contains(app), window.layer > 0, window.layer < 1000 else { return false }
-            let inMenuBar = screens.contains { abs(window.bounds.minY - $0.minY) < 1 && window.bounds.height <= 30 }
-            return !inMenuBar && window.bounds.width >= 60 && window.bounds.height >= 20
+            guard let app = window.bundleID, sharingApps.contains(app), window.layer > 0, window.layer < 1000,
+                  !ignoredLevels.contains(window.layer), window.alpha > 0 else { return false }
+            if coversAScreen(window.bounds, screens: screens) { return true }  // the border around a shared screen
+            let inMenuBar = screens.enumerated().contains { index, screen in
+                let height = index < menuBarHeights.count ? menuBarHeights[index] : 30
+                return window.bounds.minY < screen.minY + height && window.bounds.height <= height + 2
+            }
+            let size = window.bounds.size
+            let toolbarShaped = size.height >= 20 && size.height <= 120 && size.width >= 60 && size.width >= size.height * 1.5
+            return window.alpha > 0.1 && !inMenuBar && toolbarShaped
         }
     }
 

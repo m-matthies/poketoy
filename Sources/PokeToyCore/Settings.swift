@@ -146,7 +146,8 @@ public struct Settings: Codable, Equatable, Sendable {
             timers.append(single)  // saved when there was only one timer
         }
         var petsWithTimers = Set<UUID>()
-        self.timers = timers.filter { petsWithTimers.insert($0.petID).inserted }
+        let petIDs = Set(pets.map(\.id))
+        self.timers = timers.filter { petIDs.contains($0.petID) && petsWithTimers.insert($0.petID).inserted }
         seen = (try? container.decodeIfPresent([String].self, forKey: .seen)) ?? []
         lastAlive = try? container.decodeIfPresent(Date.self, forKey: .lastAlive)
     }

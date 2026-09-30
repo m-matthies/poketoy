@@ -16,7 +16,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     private var shortcutButtons: [ShortcutAction: NSButton] = [:]
     private var shortcutNotes: [ShortcutAction: NSTextField] = [:]
     private let fullScreen = NSButton(checkboxWithTitle: "Hide pets while an app is full screen", target: nil, action: nil)
-    private let screenSharing = NSButton(checkboxWithTitle: "Hide pets while a listed app shares the screen",
+    private let screenSharing = NSButton(checkboxWithTitle: "Hide pets while Zoom, Teams or Webex shares the screen",
                                          target: nil, action: nil)
     private let captureExclusion = NSButton(checkboxWithTitle: "Make pets invisible to screen capture "
                                             + "(sharing, recordings and your own screenshots)", target: nil, action: nil)
@@ -242,7 +242,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
             let field = NSTextField(string: session.name)
             field.isBordered = false
             field.drawsBackground = false
-            field.tag = row
+            field.identifier = NSUserInterfaceItemIdentifier(session.id)  // found by id, not by (shifting) row
             field.delegate = self
             field.toolTip = session.isBuiltIn ? "Built in: part of the automatic cycle (can be renamed)" : nil
             return field
@@ -287,14 +287,22 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField, sessions.indices.contains(field.tag) else { return }
-        let id = sessions[field.tag].id
+        guard let field = notification.object as? NSTextField, let id = field.identifier?.rawValue,
+              model.pomodoroOptions.session(id) != nil else { return }
         let name = field.stringValue
         model.updatePreferences { $0.pomodoro.rename(session: id, to: name) }
-        sessionsTable.reloadData()
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.sessionsTable.reloadData() }  // after the field has let go
+        }
+    }
+
+    /// Commits a name still being typed before the table changes under it.
+    private func endNameEditing() {
+        window?.makeFirstResponder(nil)
     }
 
     @objc private func sessionMinutesChanged(_ sender: NSStepper) {
+        endNameEditing()
         guard sessions.indices.contains(sender.tag) else { return }
         let id = sessions[sender.tag].id
         let minutes = sender.integerValue
@@ -303,6 +311,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     }
 
     @objc private func sessionKindChanged(_ sender: NSPopUpButton) {
+        endNameEditing()
         guard sessions.indices.contains(sender.tag) else { return }
         let id = sessions[sender.tag].id
         let kind: SessionPreset.Kind = sender.indexOfSelectedItem == 0 ? .work : .relax
@@ -319,6 +328,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
 
     /// Adds a session and starts editing its name.
     private func addSession(name: String, minutes: Int, kind: SessionPreset.Kind) {
+        endNameEditing()
         model.updatePreferences { _ = $0.pomodoro.addSession(name: name, minutes: minutes, kind: kind) }
         sessionsTable.reloadData()
         let row = sessions.count - 1
@@ -328,6 +338,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     }
 
     @objc private func removeSession() {
+        endNameEditing()
         let row = sessionsTable.selectedRow
         guard sessions.indices.contains(row), !sessions[row].isBuiltIn else { return }
         let id = sessions[row].id
