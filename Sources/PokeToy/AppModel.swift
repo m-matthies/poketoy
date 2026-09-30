@@ -104,12 +104,8 @@ final class AppModel {
     /// Drops a random treat from the top of the screen under the cursor.
     func feed() {
         guard canFeed else { return }
-        let cursor = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(cursor, $0.frame, false) }) ?? NSScreen.main else {
-            return
-        }
         let kind: ItemKind = Bool.random() ? .apple : .oranBerry
-        playground.dropTreat(kind, at: CGPoint(x: cursor.x, y: screen.visibleFrame.maxY - 10))
+        playground.dropTreat(kind, at: playground.feedingSpot(cursor: NSEvent.mouseLocation, world: worldMonitor.world))
     }
 
     func handle(_ event: ItemEvent, item id: UUID) {
@@ -143,6 +139,7 @@ final class AppModel {
     }
 
     func endCatchGame() {
+        if case .finalScore = gameUI.status { return }  // already over; the results are on their way
         if playground.game != nil {
             playground.endGame()
         } else {
@@ -230,6 +227,9 @@ final class AppModel {
         let store = self.store
         // Keep loading short: the overlay captures the mouse meanwhile.
         let catalog = (try? await withDeadline(seconds: 3) { try await store.catalog() }) ?? []
+        // Keep only sprites still needed by an open results window; this round loads its own.
+        let pending = gameUI.pendingCatchPaths
+        wildSprites = wildSprites.filter { pending.contains($0.key) }
         let complete = catalog.filter(\.isComplete)
         let pool = complete.isEmpty ? catalog : complete
         var loaded = await loadWild(Array(pool.shuffled().prefix(8)))
@@ -283,6 +283,11 @@ final class AppModel {
                 }
             case .wildRemoved(let id):
                 petViews.removeValue(forKey: id)?.close()
+            case .ballHit(let id):
+                if let pet = playground.pet(id) { gameUI.addEffect(.flash, at: pet.body.position) }
+            case .caught(let id):
+                let catches = (playground.game?.catches ?? []) + (playground.lastResults?.catches ?? [])
+                if let record = catches.last(where: { $0.petID == id }) { gameUI.addEffect(.stars, at: record.position) }
             case .friendshipChanged:
                 friendshipsChanged = true
             case .roundEnded:
@@ -299,15 +304,21 @@ final class AppModel {
     }
 
     private func showResults() {
-        gameUI.finish()
-        guard let results = playground.lastResults else { return }
+        guard let results = playground.lastResults, results.score > 0 || !results.catches.isEmpty else {
+            gameUI.finish()  // nothing happened (e.g. ended during the countdown): no results window
+            return
+        }
         let isNewBest = results.score > settings.bestCatchScore
         if isNewBest {
             settings.bestCatchScore = results.score
             save()
         }
-        let keepable = CatchGame.keepable(results.catches, ownPetCount: settings.pets.count, cap: Playground.maxOwnPets)
-        gameUI.showResults(results, best: settings.bestCatchScore, isNewBest: isNewBest, keepable: keepable)
+        gameUI.showFinalScore(results.score) { [weak self] in
+            guard let self else { return }
+            let keepable = CatchGame.keepable(results.catches, ownPetCount: self.settings.pets.count,
+                                              cap: Playground.maxOwnPets)
+            self.gameUI.showResults(results, best: self.settings.bestCatchScore, isNewBest: isNewBest, keepable: keepable)
+        }
     }
 
     /// Opens a panel for each new treat and closes panels whose treat is gone.

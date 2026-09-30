@@ -68,6 +68,9 @@ final class ResultsWindowController: NSWindowController {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Sprite paths of this round's catches.
+    var catchPaths: [String] { results.catches.map(\.path) }
+
     func show() {
         NSApp.activate()
         showWindow(nil)

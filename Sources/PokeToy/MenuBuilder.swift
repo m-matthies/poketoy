@@ -6,11 +6,13 @@ import PokeToyCore
 final class ActionItem: NSMenuItem, NSMenuItemValidation {
     private let handler: () -> Void
     private let isAllowed: (() -> Bool)?
+    private let dynamicTitle: (() -> String)?
 
     init(_ title: String, key: String = "", state: NSControl.StateValue = .off, enabled: (() -> Bool)? = nil,
-         handler: @escaping () -> Void) {
+         dynamicTitle: (() -> String)? = nil, handler: @escaping () -> Void) {
         self.handler = handler
         isAllowed = enabled
+        self.dynamicTitle = dynamicTitle
         super.init(title: title, action: #selector(fire), keyEquivalent: key)
         target = self
         self.state = state
@@ -25,7 +27,8 @@ final class ActionItem: NSMenuItem, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        isAllowed?() ?? true
+        if let dynamicTitle { menuItem.title = dynamicTitle() }
+        return isAllowed?() ?? true
     }
 }
 
@@ -76,7 +79,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(ActionItem("Feed", key: "f", enabled: { [unowned model] in model.canFeed }) {
             [unowned model] in model.feed()
         })
-        appMenu.addItem(ActionItem("Start/End Catch Game", key: "g") { [unowned model] in
+        appMenu.addItem(ActionItem("Start Catch Game", key: "g", dynamicTitle: { [unowned model] in
+            model.isGameRunning ? "End Catch Game" : "Start Catch Game"
+        }) { [unowned model] in
             if model.isGameRunning { model.endCatchGame() } else { model.startCatchGame() }
         })
         appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
