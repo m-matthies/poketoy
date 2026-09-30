@@ -280,3 +280,26 @@ the full catch round (loading, countdown, throwing, hits, wobbles, HUD, results,
 
 Hunger or other stats, sounds, own pets as catch targets, pets interacting with wild
 Pokémon beyond cheering, walking between monitors, online leaderboards.
+
+## Additions requested during planning
+
+### Complete sprites only (default)
+
+- SpriteCollab's `sprite_complete` is 0 (none), 1 ("Exists": ~13 required animations,
+  usually no Eat/Nod/Sit…) or 2 ("Full": ~34–36 animations). In the current tracker 684
+  entries are Full and 2,546 are Exists.
+- `CatalogEntry` gains `isComplete` (`sprite_complete == 2`). `Catalog.filter` gains
+  `completeOnly: Bool`.
+- The picker has a **"Show all Pokémon"** checkbox, off by default, so the list shows only
+  complete Pokémon unless ticked. The status line shows the visible count.
+- The catch game picks its random wild Pokémon from complete entries only (falling back
+  to all entries if none are complete).
+
+### Pets wake up on their own
+
+- A sleeping pet wakes by itself after a random nap of 30–120 s (seeded RNG): it plays
+  `wake` (candidates Wake, Idle, Walk; non-looping) and then goes idle.
+- Waking resets the "time since interaction", so it stays awake about a minute before it
+  can fall asleep again. Clicking, dragging or a cursor mode still wake it immediately as
+  before. Wild Pokémon never sleep, so this only affects own pets; pets napping together
+  wake independently.
