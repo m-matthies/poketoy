@@ -188,18 +188,26 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             menu.addItem(NSMenuItem(title: model.needsStarter ? "No pets yet" : "No pets — catch some in the Catch Game",
                                     action: nil, keyEquivalent: ""))
         } else {
-            menu.addItem(NSMenuItem(title: "Pets", action: nil, keyEquivalent: ""))
+            let out = model.petsOnScreen
+            menu.addItem(NSMenuItem(title: "Pets — \(out) of \(pets.count) out", action: nil, keyEquivalent: ""))
             for pet in pets {
                 let badge = model.pomodoroBadge(for: pet.id).map { "   \($0)" } ?? ""
-                let item = NSMenuItem(title: pet.name + badge, action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: (pet.inBall ? "◓ " : "") + pet.name + badge, action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
                 addPomodoroItems(to: submenu, petID: pet.id)
                 submenu.addItem(.separator())
                 addPetItems(for: pet, to: submenu)
-                if submenu.numberOfItems > 0 { submenu.addItem(.separator()) }
+                if submenu.items.last?.isSeparatorItem == false { submenu.addItem(.separator()) }
+                addBallItem(for: pet, to: submenu)
                 submenu.addItem(ActionItem("Release…") { [unowned model] in model.confirmRelease(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)
+            }
+            if out > 0 {
+                menu.addItem(ActionItem("Return All to Poké Balls") { [unowned model] in model.setAllInBall(true) })
+            }
+            if out < pets.count {
+                menu.addItem(ActionItem("Let All Out") { [unowned model] in model.setAllInBall(false) })
             }
         }
         menu.addItem(.separator())
@@ -255,7 +263,15 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                 menu.addItem(item)
             }
         }
+        menu.addItem(.separator())
+        addBallItem(for: pet, to: menu)
         return menu
+    }
+
+    private func addBallItem(for pet: PetRecord, to menu: NSMenu) {
+        menu.addItem(ActionItem(pet.inBall ? "Let Out of Poké Ball" : "Return to Poké Ball") { [unowned model] in
+            model.setInBall(pet.id, !pet.inBall)
+        })
     }
 
     /// Best friend and evolution for one pet.
@@ -310,7 +326,9 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
             addSessionItems(to: menu, petID: id)
         }
         let task = model.timer(for: id)?.task
-        menu.addItem(ActionItem(task == nil ? "Name a Task…" : "Rename Task…") { [unowned model] in model.editTask(on: id) })
+        if model.isOnScreen(id) {  // named right at the pet
+            menu.addItem(ActionItem(task == nil ? "Name a Task…" : "Rename Task…") { [unowned model] in model.editTask(on: id) })
+        }
         if task != nil {
             menu.addItem(ActionItem("Clear Task") { [unowned model] in model.setTask("", on: id) })
         }

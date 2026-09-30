@@ -52,3 +52,12 @@ Request: "make rightclick a pokemon setting a pomodoro timer".
   clicking elsewhere saves; it doesn't take focus from the user's app). The task shows beside the countdown and in the
   notifications, stays for the next sessions until renamed or cleared, and naming one on a pet without a timer gives it
   a timer waiting for its first focus.
+
+## Poké Balls (added)
+
+- `PetRecord.inBall`: a pet resting in its Poké Ball is kept but not on screen (not added to the playground at launch;
+  `Playground.stowPet` removes it without forgetting its friendships). Its evolution progress and timer carry on (a
+  timer ending still notifies; there's no pet to react). Toggles: "Return to Poké Ball" in the pet's right-click menu,
+  "Return to Poké Ball / Let Out of Poké Ball" in its paw-menu entry (◓ marks pets in their ball; the Pets header says
+  how many are out, with Return All / Let All Out), and a button per row in the Pets window. Letting a pet out brings it
+  back where it was, with a flash and a happy bubble. Pets in their ball still count towards the 12-pet limit.

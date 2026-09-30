@@ -115,7 +115,7 @@ final class AppModel {
         settings.save(to: .standard)
         worldMonitor.mainScreenOnly = settings.preferences.screens == .main
         worldMonitor.start()
-        for record in settings.pets {
+        for record in settings.pets where !record.inBall {
             Task {
                 do {
                     attach(record, sprites: try await loadSprites(record.spritePath))
@@ -317,6 +317,11 @@ final class AppModel {
         petViews[id]?.editTask()
     }
 
+    /// Whether a pet is out on the screen (a task can only be named right at a pet that's out).
+    func isOnScreen(_ id: UUID) -> Bool {
+        petViews[id] != nil
+    }
+
     /// The user is looking at this pet (opened its menu): it can stop trying to get their attention.
     func noticed(pet id: UUID) {
         playground.stopSeekingAttention(id)
@@ -504,6 +509,37 @@ final class AppModel {
     }
 
     /// Releases a pet: it leaves the screen (its Pokédex entry stays, as a former pet).
+    // MARK: - Poké Balls
+
+    /// Pets out on the screen (the rest rest in their Poké Balls).
+    var petsOnScreen: Int { settings.pets.filter { !$0.inBall }.count }
+
+    /// Puts a pet in its Poké Ball — off the screen, but kept with its friends, progress and timer — or lets it out.
+    func setInBall(_ id: UUID, _ inBall: Bool) {
+        guard let index = settings.pets.firstIndex(where: { $0.id == id }), settings.pets[index].inBall != inBall else { return }
+        if inBall {
+            save()  // remember where it was
+            playground.stowPet(id)
+            petViews.removeValue(forKey: id)?.close()
+            settings.pets[index].inBall = true
+        } else {
+            settings.pets[index].inBall = false
+            let record = settings.pets[index]
+            Task {
+                guard let sprites = try? await loadSprites(record.spritePath) else { return }
+                attach(record, sprites: sprites)
+                petViews[id]?.flash()
+                showEmotion(.happy, pet: id)
+            }
+        }
+        save()
+        petsChanged()
+    }
+
+    func setAllInBall(_ inBall: Bool) {
+        for pet in settings.pets { setInBall(pet.id, inBall) }
+    }
+
     /// Asks first, then releases the pet.
     func confirmRelease(_ id: UUID) {
         guard let pet = settings.pets.first(where: { $0.id == id }) else { return }
@@ -878,7 +914,7 @@ final class AppModel {
 
     private func attach(_ record: PetRecord, sprites: SpriteSet) {
         // A pet removed while its sprites were loading is dropped.
-        guard settings.pets.contains(where: { $0.id == record.id }), petViews[record.id] == nil else { return }
+        guard settings.pets.contains(where: { $0.id == record.id && !$0.inBall }), petViews[record.id] == nil else { return }
         let world = worldMonitor.world
         let start = record.position.flatMap { world.isOnAnyScreen($0, margin: 0) ? $0 : nil }
             ?? world.spawnPoint(fraction: .random(in: 0.2...0.8))

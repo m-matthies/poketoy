@@ -245,7 +245,12 @@ public struct Playground: Sendable {
         return id
     }
 
-    public mutating func removePet(_ id: UUID) {
+    /// Takes a pet off the screen into its Poké Ball: unlike releasing it, its friendships stay.
+    public mutating func stowPet(_ id: UUID) {
+        removePet(id, keepFriendships: true)
+    }
+
+    public mutating func removePet(_ id: UUID, keepFriendships: Bool = false) {
         for moment in moments where moment.a == id || moment.b == id {
             let partner = moment.a == id ? moment.b : moment.a
             if let p = index(of: partner) { pets[p].endScript() }
@@ -267,7 +272,9 @@ public struct Playground: Sendable {
         annoyedUntil[id] = nil
         passThrough[id] = nil
         blockTimes[id] = nil
-        if wasOwn {
+        attention[id] = nil
+        fetchRacers.remove(id)
+        if wasOwn && !keepFriendships {
             friendships.remove(id)
             events.append(.friendshipChanged)
         }

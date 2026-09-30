@@ -12,6 +12,8 @@ public struct PetRecord: Codable, Equatable, Identifiable, Sendable {
     public var treatsEaten: Int
     /// Pomodoro focus sessions finished with this pet carrying the timer, since joining (or the last evolution).
     public var focusSessions: Int
+    /// Resting in its Poké Ball: kept, but not on screen.
+    public var inBall: Bool
     /// A shiny Pokémon (stays shiny when it evolves).
     public var isShiny: Bool
     /// A name the player gave it (kept when it evolves).
@@ -29,20 +31,21 @@ public struct PetRecord: Codable, Equatable, Identifiable, Sendable {
 
     public init(id: UUID = UUID(), spritePath: String, displayName: String, position: CGPoint? = nil,
                 treatsEaten: Int = 0, isShiny: Bool = false, nickname: String? = nil, joined: Date? = nil,
-                focusSessions: Int = 0) {
+                focusSessions: Int = 0, inBall: Bool = false) {
         self.id = id
         self.spritePath = spritePath
         self.displayName = displayName
         self.position = position
         self.treatsEaten = treatsEaten
         self.focusSessions = focusSessions
+        self.inBall = inBall
         self.isShiny = isShiny
         self.nickname = nickname
         self.joined = joined
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, spritePath, displayName, position, treatsEaten, isShiny, nickname, joined, focusSessions
+        case id, spritePath, displayName, position, treatsEaten, isShiny, nickname, joined, focusSessions, inBall
     }
 
     public init(from decoder: Decoder) throws {
@@ -53,6 +56,7 @@ public struct PetRecord: Codable, Equatable, Identifiable, Sendable {
         position = try container.decodeIfPresent(CGPoint.self, forKey: .position)
         treatsEaten = (try? container.decodeIfPresent(Int.self, forKey: .treatsEaten)) ?? 0
         focusSessions = max(0, (try? container.decodeIfPresent(Int.self, forKey: .focusSessions)) ?? 0)
+        inBall = (try? container.decodeIfPresent(Bool.self, forKey: .inBall)) ?? false
         // Older records only said so in the name.
         isShiny = (try? container.decodeIfPresent(Bool.self, forKey: .isShiny)) ?? displayName.contains("(Shiny")
         nickname = try? container.decodeIfPresent(String.self, forKey: .nickname)

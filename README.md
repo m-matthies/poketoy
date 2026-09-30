@@ -62,7 +62,9 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - PokeToy lives in the menu bar (no Dock icon). The paw icon's menu:
   - **Show / Hide Pets** (⌃⌥H by default, from any app), **Feed**, **Play Fetch**, **Start / End Catch Game**,
     **Pokédex…**
-  - **Pets** — best friend, evolution progress / Evolve, Release
+  - **Pets** — how many are out; per pet its timer, best friend, evolution progress / Evolve, **Return to Poké Ball** /
+    **Let Out**, Release; plus **Return All to Poké Balls** / **Let All Out**. A pet in its Poké Ball is off the screen
+    but keeps its friends, progress and timer — so you choose how many pets are out.
   - **Cursor** — Off, Follow Cursor, Run from Cursor
   - **Size** — 1×, 2×, 3×
   - **Pets…** — rename your pets (the name stays when they evolve) and see their stats: species, together since,
