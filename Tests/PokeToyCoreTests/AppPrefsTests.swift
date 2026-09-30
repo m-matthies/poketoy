@@ -208,6 +208,15 @@ import Testing
                                           preferences: prefs, screens: screens))
     }
 
+    @Test func captureExclusionIsASeparateOptInSetting() throws {
+        #expect(!Preferences().excludeFromCapture)
+        var settings = Settings.default
+        settings.preferences.excludeFromCapture = true
+        settings.preferences.hideFromScreenSharing = false
+        let again = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings)).preferences
+        #expect(again.excludeFromCapture && !again.hideFromScreenSharing)
+    }
+
     @Test func showingPetsAnywayAlsoWorksWhileSharing() {
         var state = AutoHideState()
         let prefs = Preferences()

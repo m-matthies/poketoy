@@ -114,16 +114,17 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var hiddenWhileFrontmost: [ExcludedApp] = Preferences.defaultHiddenApps
     /// 30 fps on battery; paused while the screen is locked.
     public var batterySaver = true
-    /// Pets stay out of screen sharing and screenshots (their windows can't be captured, and they hide while a
-    /// listed app is sharing the screen).
+    /// Pets hide while a listed app (Zoom, Teams, …) is sharing the screen.
     public var hideFromScreenSharing = true
+    /// Pets' windows can't be captured at all: invisible in screen sharing, recordings and screenshots (opt-in).
+    public var excludeFromCapture = false
     public var pomodoro = PomodoroOptions()
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case petSpeed, naps, screens, feedShortcut, catchGameShortcut, showHideShortcut, hideInFullScreen,
-             hiddenWhileFrontmost, batterySaver, pomodoro, hideFromScreenSharing
+             hiddenWhileFrontmost, batterySaver, pomodoro, hideFromScreenSharing, excludeFromCapture
     }
 
     public init(from decoder: Decoder) throws {
@@ -144,6 +145,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         pomodoro = (try? c.decodeIfPresent(PomodoroOptions.self, forKey: .pomodoro)) ?? defaults.pomodoro
         hideFromScreenSharing = (try? c.decodeIfPresent(Bool.self, forKey: .hideFromScreenSharing))
             ?? defaults.hideFromScreenSharing
+        excludeFromCapture = (try? c.decodeIfPresent(Bool.self, forKey: .excludeFromCapture)) ?? defaults.excludeFromCapture
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -159,6 +161,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(batterySaver, forKey: .batterySaver)
         try c.encode(pomodoro, forKey: .pomodoro)
         try c.encode(hideFromScreenSharing, forKey: .hideFromScreenSharing)
+        try c.encode(excludeFromCapture, forKey: .excludeFromCapture)
     }
 
     private static func shortcut(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys,

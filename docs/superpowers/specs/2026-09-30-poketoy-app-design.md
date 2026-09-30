@@ -68,3 +68,6 @@ Pets window rename, battery switch, lock screen.
   - as a backup (capture exclusion may not be honoured by every capture method), pets auto-hide while a listed app
     (Zoom, Teams, Webex, …) shows a floating window above the normal layer that isn't a menu bar icon — its sharing
     toolbar (`AutoHide.isSharingScreen`). Showing pets anyway works as for the other auto-hide rules.
+- (changed) The two are separate settings: `hideFromScreenSharing` (hide while a listed app shares; on by default)
+  and `excludeFromCapture` ("Make pets invisible to screen capture": the not-capturable windows, which also keeps pets
+  out of the player's own screenshots; opt-in, off by default).

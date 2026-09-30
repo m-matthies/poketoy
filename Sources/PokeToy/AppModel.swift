@@ -176,7 +176,7 @@ final class AppModel {
     /// Pushes the preferences into the playground, the world, the shortcuts and the tick rate.
     private func applyPreferences() {
         let prefs = settings.preferences
-        CapturePolicy.excluded = prefs.hideFromScreenSharing
+        CapturePolicy.excluded = prefs.excludeFromCapture
         playground.petSpeed = CGFloat(prefs.petSpeed)
         playground.napAfter = prefs.naps.seconds
         if worldMonitor.mainScreenOnly != (prefs.screens == .main) {

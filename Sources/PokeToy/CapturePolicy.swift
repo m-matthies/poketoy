@@ -1,11 +1,11 @@
 import AppKit
 
 /// Keeps PokeToy's on-screen overlays (pets, bubbles, countdowns, treats, animations, the catch game) out of screen
-/// sharing and screenshots when the player wants that: their windows are marked as not capturable.
+/// sharing, recordings and screenshots when the player opts in: their windows are marked as not capturable.
 @MainActor
 enum CapturePolicy {
-    /// Set from Preferences ("Keep pets out of screen sharing and screenshots").
-    static var excluded = true {
+    /// Set from Preferences ("Make pets invisible to screen capture"); off by default.
+    static var excluded = false {
         didSet {
             guard excluded != oldValue else { return }
             for window in NSApp.windows where window is CaptureExcludable { apply(to: window) }

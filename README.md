@@ -75,9 +75,9 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
     treats eaten, best friend, evolution progress; release one from here too.
   - **Preferences…** — *General*, *Shortcuts & Hiding* and *Pomodoro* sections: pet speed; how quickly pets nap (often, normal, rarely, never); all screens or the main screen
     only; the Feed, Catch Game and Show/Hide shortcuts (record your own — they need ⌃ or ⌥ — or clear them); hide pets while an app is full
-    screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); keep pets out of
-    screen sharing and screenshots (on by default: their windows can't be captured, and they hide while a listed app
-    such as Zoom shares the screen); launch at login;
+    screen or while a listed app is in front (Zoom, Teams, Webex, FaceTime and Keynote to start with); hide pets while a
+    listed app such as Zoom shares the screen (on by default); optionally make pets invisible to screen capture
+    altogether (sharing, recordings and your own screenshots — off by default); launch at login;
     battery saver (30 fps on battery, paused while the screen is locked).
   - **Reset Game…** — after asking, releases every pet and erases the Pokédex, scores, friendships, settings and downloaded
     Pokémon; then you choose a new starter.

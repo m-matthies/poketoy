@@ -16,8 +16,10 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     private var shortcutButtons: [ShortcutAction: NSButton] = [:]
     private var shortcutNotes: [ShortcutAction: NSTextField] = [:]
     private let fullScreen = NSButton(checkboxWithTitle: "Hide pets while an app is full screen", target: nil, action: nil)
-    private let screenSharing = NSButton(checkboxWithTitle: "Keep pets out of screen sharing and screenshots "
-                                         + "(and hide them while a listed app shares the screen)", target: nil, action: nil)
+    private let screenSharing = NSButton(checkboxWithTitle: "Hide pets while a listed app shares the screen",
+                                         target: nil, action: nil)
+    private let captureExclusion = NSButton(checkboxWithTitle: "Make pets invisible to screen capture "
+                                            + "(sharing, recordings and your own screenshots)", target: nil, action: nil)
     private let appsTable = NSTableView()
     private let loginItem = NSButton(checkboxWithTitle: "Launch PokeToy at login", target: nil, action: nil)
     private let loginNote = NSTextField(labelWithString: "")
@@ -152,10 +154,12 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         battery.action = #selector(batteryChanged)
 
         let general = section([generalGrid, separator(), loginItem, loginNote, battery])
-        let hiding = section([grid, separator(), fullScreen, screenSharing, appsLabel, appsScroll,
+        let hiding = section([grid, separator(), fullScreen, screenSharing, captureExclusion, appsLabel, appsScroll,
                               stack([add, remove, restore])])
         screenSharing.target = self
         screenSharing.action = #selector(screenSharingChanged)
+        captureExclusion.target = self
+        captureExclusion.action = #selector(captureExclusionChanged)
         let pomodoro = section([
             NSTextField(labelWithString: "Sessions (work sessions count as focus, relax ones as breaks):"),
             sessionsList(), pomodoroGrid(), separator(), autoBreaks, autoFocus, attention, notifications, sound,
@@ -451,6 +455,7 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
         }
         fullScreen.state = prefs.hideInFullScreen ? .on : .off
         screenSharing.state = prefs.hideFromScreenSharing ? .on : .off
+        captureExclusion.state = prefs.excludeFromCapture ? .on : .off
         appsTable.reloadData()
         if !(window?.firstResponder is NSTextView) { sessionsTable.reloadData() }  // not while a name is typed
         updateRemoveButton()
@@ -501,6 +506,11 @@ final class PreferencesWindowController: NSWindowController, NSTableViewDataSour
     @objc private func screenSharingChanged() {
         let on = screenSharing.state == .on
         model.updatePreferences { $0.hideFromScreenSharing = on }
+    }
+
+    @objc private func captureExclusionChanged() {
+        let on = captureExclusion.state == .on
+        model.updatePreferences { $0.excludeFromCapture = on }
     }
 
     @objc private func batteryChanged() {
