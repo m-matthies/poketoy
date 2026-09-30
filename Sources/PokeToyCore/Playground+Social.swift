@@ -61,6 +61,7 @@ extension Playground {
             for (me, other) in [(i, j), (j, i)] {
                 pets[me].perform(Script(anim: .greet, facing: facing(from: me, to: other), hearts: level.rawValue,
                                         end: .animationFinished, priority: 2))
+                if level == .bestFriend { feel(.happy, me) }
             }
             moments.append(ActiveMoment(kind: .greet, a: pets[i].id, b: pets[j].id))
         case .tag:

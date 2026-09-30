@@ -107,6 +107,8 @@ public enum PlaygroundEvent: Equatable, Sendable {
     case caught(petID: UUID)
     case brokeFree(petID: UUID)
     case roundEnded
+    /// A pet shows a feeling (drawn as a bubble by the app).
+    case emotion(petID: UUID, Emotion)
 }
 
 /// A social moment in progress between two pets.
@@ -144,6 +146,8 @@ public struct Playground: Sendable {
     /// Wild Pokémon that just broke out of a ball and will dash away once they land.
     var fleeBoost: Set<UUID> = []
     var events: [PlaygroundEvent] = []
+    /// Own pets the user threw hard; they land dizzy.
+    var thrownByUser: Set<UUID> = []
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -198,6 +202,7 @@ public struct Playground: Sendable {
         followTimers[id] = nil
         wildSpecs[id] = nil
         fleeBoost.remove(id)
+        thrownByUser.remove(id)
         if wasOwn {
             friendships.remove(id)
             events.append(.friendshipChanged)
@@ -212,6 +217,13 @@ public struct Playground: Sendable {
     public mutating func handle(_ event: PetEvent, pet id: UUID) {
         guard let i = index(of: id), pets[i].visible else { return }
         pets[i].handle(event)
+        if case .dragEnded(let velocity) = event, pets[i].role == .own, hypot(velocity.dx, velocity.dy) > 400 {
+            thrownByUser.insert(id)
+        }
+    }
+
+    mutating func feel(_ emotion: Emotion, _ i: Int) {
+        events.append(.emotion(petID: pets[i].id, emotion))
     }
 
     public mutating func movePet(_ id: UUID, to position: CGPoint) {
@@ -264,6 +276,7 @@ public struct Playground: Sendable {
         Self.decay(&knockCooldowns, dt)
         for i in pets.indices where pets[i].visible {
             updateBrain(i, dt: dt, world: world, cursor: cursor, cursorMode: cursorMode)
+            if pets[i].brain.state == .landing, thrownByUser.remove(pets[i].id) != nil { feel(.dizzy, i) }
         }
         rulesBeforePhysics(dt: dt, world: world)
         for i in pets.indices where pets[i].visible && pets[i].brain.state != .dragged {

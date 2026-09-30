@@ -133,7 +133,7 @@ extension Playground {
             && (treatTargets[pets[i].id] ?? treat.id) == treat.id
             && abs(pets[i].body.position.x - treat.body.position.x) <= Self.treatSightRange {
             let facing: Direction = pets[i].body.position.x < treat.body.position.x ? .right : .left
-            pets[i].perform(Script(anim: .sad, facing: facing, end: .animationFinished, priority: 2))
+            if pets[i].perform(Script(anim: .sad, facing: facing, end: .animationFinished, priority: 2)) { feel(.sad, i) }
         }
         treatTargets = treatTargets.filter { $0.value != treat.id }
 
@@ -149,5 +149,6 @@ extension Playground {
             events.append(.friendshipChanged)
         }
         events.append(.treatEaten(petID: eaterID))
+        feel(.joyous, eater)
     }
 }

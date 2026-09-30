@@ -21,6 +21,7 @@ extension Playground {
                 let direction: CGFloat = abs(vx) > 50 ? (vx > 0 ? 1 : -1)
                     : (pets[y].body.position.x >= pets[x].body.position.x ? 1 : -1)
                 pets[y].handle(.knocked(velocity: CGVector(dx: 220 * direction, dy: 380)))
+                feel(.pain, y)
                 pets[x].body.velocity.dx = -pets[x].body.velocity.dx * 0.5
                 knockCooldowns[key] = 0.5
             }
