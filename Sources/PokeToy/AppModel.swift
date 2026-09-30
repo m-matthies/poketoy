@@ -1,6 +1,21 @@
 import AppKit
+import IOKit.ps
 import OSLog
 import PokeToyCore
+import ServiceManagement
+
+/// What the configurable global shortcuts do.
+enum ShortcutAction: CaseIterable {
+    case feed, catchGame, showHide
+
+    var title: String {
+        switch self {
+        case .feed: return "Feed"
+        case .catchGame: return "Start / End Catch Game"
+        case .showHide: return "Show / Hide Pets"
+        }
+    }
+}
 
 /// A wild Pokémon's catalog entry with its loaded sprites.
 private struct LoadedWild: Sendable {
@@ -30,11 +45,52 @@ final class AppModel {
     /// This round's wild Pokémon by path, and which path each spawned wild has.
     private var rosterSpecs: [String: WildSpec] = [:]
     private var wildPaths: [UUID: String] = [:]
-    private lazy var pokedexWindow = PokedexWindowController(model: self)
+    // Windows are made when first shown; refreshing one that was never opened is a no-op.
+    private var pokedexWindowIfOpened: PokedexWindowController?
+    private var pokedexWindow: PokedexWindowController {
+        if let window = pokedexWindowIfOpened { return window }
+        let window = PokedexWindowController(model: self)
+        pokedexWindowIfOpened = window
+        return window
+    }
     private var gameAttempt = UUID()
     private var timer: Timer?
     private var lastTick: CFTimeInterval = 0
     private lazy var starterWindow = StarterWindowController(model: self)
+    private var preferencesWindowIfOpened: PreferencesWindowController?
+    private var preferencesWindow: PreferencesWindowController {
+        if let window = preferencesWindowIfOpened { return window }
+        let window = PreferencesWindowController(model: self)
+        preferencesWindowIfOpened = window
+        return window
+    }
+    private var petsWindowIfOpened: PetsWindowController?
+    private var petsWindow: PetsWindowController {
+        if let window = petsWindowIfOpened { return window }
+        let window = PetsWindowController(model: self)
+        petsWindowIfOpened = window
+        return window
+    }
+    /// Shortcuts are off while a new one is being recorded.
+    private var shortcutsSuspended = false
+    /// What's registered now, so unrelated preference changes don't re-register (or rebuild menus).
+    private var registeredShortcuts: [ShortcutAction: Shortcut] = [:]
+    private var autoHideState = AutoHideState()
+    private var lastAutoHideCheck: CFTimeInterval = 0
+    private var lastPowerCheck: CFTimeInterval = 0
+    private var sessionInactive = false
+    private var hotKeys: [GlobalHotKey] = []
+    /// Shortcuts macOS refused because another app already uses them.
+    private(set) var unavailableShortcuts: Set<ShortcutAction> = []
+    /// Hidden by the auto-hide rules (a full-screen app, or one from the list, is in front).
+    private var autoHidden = false
+    /// Battery saver: the tick rate, and whether the screen is locked or asleep (ticking paused).
+    private var tickInterval = 1.0 / 60
+    private var screenLocked = false
+    private var screensAsleep = false
+    private var onBattery = false
+    /// Called when menus need rebuilding (their shortcuts changed).
+    var onMenusChanged: (() -> Void)?
     private lazy var gameUI = GameController(model: self)
     private let logger = Logger(subsystem: "local.poketoy.PokeToy", category: "app")
 
@@ -55,6 +111,7 @@ final class AppModel {
         // Current pets belong in the Pokédex too (also covers pets from before it tracked them).
         for record in settings.pets { recordInPokedex(record) }
         settings.save(to: .standard)
+        worldMonitor.mainScreenOnly = settings.preferences.screens == .main
         worldMonitor.start()
         for record in settings.pets {
             Task {
@@ -65,13 +122,218 @@ final class AppModel {
                 }
             }
         }
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        observeScreenLock()
+        onBattery = Self.isOnBattery()
+        applyPreferences()
+        refreshEvolutionOptions()
+        if !settings.starterChosen { showStarterChoice() }
+    }
+
+    // MARK: - Preferences
+
+    func showPreferences() {
+        preferencesWindow.show()
+    }
+
+    func showPets() {
+        petsWindow.show()
+    }
+
+    /// `save: false` for rapid changes (a slider being dragged); the last one saves.
+    func updatePreferences(save shouldSave: Bool = true, _ change: (inout Preferences) -> Void) {
+        change(&settings.preferences)
+        applyPreferences()
+        if shouldSave { save() }
+    }
+
+    func shortcut(for action: ShortcutAction) -> Shortcut? {
+        switch action {
+        case .feed: return settings.preferences.feedShortcut
+        case .catchGame: return settings.preferences.catchGameShortcut
+        case .showHide: return settings.preferences.showHideShortcut
+        }
+    }
+
+    func setShortcut(_ shortcut: Shortcut?, for action: ShortcutAction) {
+        updatePreferences { prefs in
+            switch action {
+            case .feed: prefs.feedShortcut = shortcut
+            case .catchGame: prefs.catchGameShortcut = shortcut
+            case .showHide: prefs.showHideShortcut = shortcut
+            }
+        }
+    }
+
+    /// Pushes the preferences into the playground, the world, the shortcuts and the tick rate.
+    private func applyPreferences() {
+        let prefs = settings.preferences
+        playground.petSpeed = CGFloat(prefs.petSpeed)
+        playground.napAfter = prefs.naps.seconds
+        if worldMonitor.mainScreenOnly != (prefs.screens == .main) {
+            worldMonitor.mainScreenOnly = prefs.screens == .main
+            worldMonitor.refresh()
+        }
+        let wanted = Dictionary(uniqueKeysWithValues: ShortcutAction.allCases.compactMap { action in
+            shortcut(for: action).map { (action, $0) }
+        })
+        if wanted != registeredShortcuts {
+            registerShortcuts()
+            onMenusChanged?()
+        }
+        updatePacing()
+        updateAutoHide()
+    }
+
+    private func registerShortcuts() {
+        for hotKey in hotKeys { hotKey.unregister() }
+        hotKeys = []
+        unavailableShortcuts = []
+        registeredShortcuts = [:]
+        for action in ShortcutAction.allCases {
+            guard let shortcut = shortcut(for: action) else { continue }
+            registeredShortcuts[action] = shortcut
+            guard !shortcutsSuspended else { continue }
+            let hotKey = GlobalHotKey(shortcut) { [weak self] in self?.perform(action) }
+            if hotKey.isRegistered { hotKeys.append(hotKey) } else { unavailableShortcuts.insert(action) }
+        }
+    }
+
+    /// While a new shortcut is being recorded, the current ones mustn't fire (not even after other changes).
+    func suspendShortcuts() {
+        shortcutsSuspended = true
+        for hotKey in hotKeys { hotKey.unregister() }
+        hotKeys = []
+    }
+
+    func resumeShortcuts() {
+        guard shortcutsSuspended else { return }
+        shortcutsSuspended = false
+        registerShortcuts()
+    }
+
+    private func perform(_ action: ShortcutAction) {
+        switch action {
+        case .feed: feed()
+        case .catchGame: if isGameRunning { endCatchGame() } else { startCatchGame() }
+        case .showHide: toggleHidden()
+        }
+    }
+
+    // MARK: - Launch at login
+
+    var launchesAtLogin: Bool { SMAppService.mainApp.status == .enabled }
+    var launchAtLoginNeedsApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+
+    func setLaunchAtLogin(_ enabled: Bool) throws {
+        if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+    }
+
+    // MARK: - Battery saver
+
+    private static func isOnBattery() -> Bool {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let type = IOPSGetProvidingPowerSourceType(info)?.takeUnretainedValue() else { return false }
+        return (type as String) == kIOPMBatteryPowerKey
+    }
+
+    private func observeScreenLock() {
+        let distributed = DistributedNotificationCenter.default()
+        for (name, locked) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
+            distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.screenLocked = locked
+                    self?.updatePacing()
+                }
+            }
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        // Fast user switching: another user's session is in front.
+        for (name, inactive) in [(NSWorkspace.sessionDidResignActiveNotification, true),
+                                 (NSWorkspace.sessionDidBecomeActiveNotification, false)] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.sessionInactive = inactive
+                    self?.updatePacing()
+                }
+            }
+        }
+        for (name, asleep) in [(NSWorkspace.screensDidSleepNotification, true), (NSWorkspace.screensDidWakeNotification, false)] {
+            workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.screensAsleep = asleep
+                    self?.updatePacing()
+                }
+            }
+        }
+    }
+
+    /// 30 fps on battery and paused while the screen is locked or asleep (with the battery saver on), else 60 fps.
+    private func updatePacing() {
+        let saver = settings.preferences.batterySaver
+        if saver && (screenLocked || screensAsleep || sessionInactive) {
+            timer?.invalidate()
+            timer = nil
+            worldMonitor.stop()
+            return
+        }
+        let interval = FramePacing.interval(onBattery: onBattery, batterySaver: saver)
+        worldMonitor.resume()
+        guard timer == nil || interval != tickInterval else { return }
+        tickInterval = interval
+        timer?.invalidate()
+        lastTick = 0  // no catch-up jump after a pause
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        refreshEvolutionOptions()
-        if !settings.starterChosen { showStarterChoice() }
+    }
+
+    // MARK: - Visibility
+
+    /// Out of sight: hidden by the player, or by auto-hide.
+    var petsHidden: Bool { settings.hidden || autoHidden }
+
+    private func applyVisibility() {
+        let hidden = petsHidden
+        for record in settings.pets {
+            if hidden { petViews[record.id]?.hide() } else { petViews[record.id]?.show() }
+        }
+        for view in itemViews.values {
+            if hidden { view.hide() } else { view.show() }
+        }
+    }
+
+    private func updateAutoHide() {
+        let hide = autoHideState.update(frontmost: worldMonitor.frontmostBundleID,
+                                        isFullScreen: worldMonitor.frontmostIsFullScreen,
+                                        preferences: settings.preferences, gameRunning: isGameRunning)
+        guard hide != autoHidden else { return }
+        autoHidden = hide
+        applyVisibility()
+    }
+
+    // MARK: - Pets window
+
+    /// Gives a pet a nickname (an empty name or the species name clears it).
+    func rename(_ id: UUID, to name: String) {
+        guard let index = settings.pets.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let species = settings.pets[index].displayName
+        let speciesNames = [species, species.replacingOccurrences(of: " (Shiny)", with: "")]
+        settings.pets[index].nickname = trimmed.isEmpty || speciesNames.contains(trimmed) ? nil : trimmed
+        save()
+        petsChanged()
+    }
+
+    /// Open windows that show pets pick up the change.
+    private func petsChanged() {
+        petsWindowIfOpened?.refreshIfVisible()
+        pokedexWindowIfOpened?.refreshIfVisible()
+    }
+
+    func portrait(forPet path: String) async -> URL? {
+        await portrait(forCatch: path)
     }
 
     // MARK: - Pets
@@ -88,7 +350,7 @@ final class AppModel {
         guard needsStarter else { return }
         let sprites = try await loadSprites(entry.path)
         guard needsStarter else { return }
-        let record = PetRecord(spritePath: entry.path, displayName: entry.displayName)
+        let record = PetRecord(spritePath: entry.path, displayName: entry.displayName, joined: Date())
         settings.pets.append(record)
         settings.starterChosen = true
         recordInPokedex(record)
@@ -96,20 +358,34 @@ final class AppModel {
         attach(record, sprites: sprites)
         save()
         refreshEvolutionOptions()
+        petsChanged()
     }
 
     /// Releases a pet: it leaves the screen (its Pokédex entry stays, as a former pet).
+    /// Asks first, then releases the pet.
+    func confirmRelease(_ id: UUID) {
+        guard let pet = settings.pets.first(where: { $0.id == id }) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Release \(pet.name)?"
+        alert.informativeText = "It leaves for good. Its Pokédex entry stays."
+        alert.addButton(withTitle: "Release").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        removePet(id)
+    }
+
     func removePet(_ id: UUID) {
         playground.removePet(id)
         petViews.removeValue(forKey: id)?.close()
         settings.pets.removeAll { $0.id == id }
         save()
-        pokedexWindow.refreshIfVisible()
+        petsChanged()
     }
 
     func bestFriendName(of id: UUID) -> String? {
         guard let friend = playground.friendships.bestFriend(of: id, among: settings.pets.map(\.id)) else { return nil }
-        return settings.pets.first { $0.id == friend }?.displayName
+        return settings.pets.first { $0.id == friend }?.name
     }
 
     func handle(_ event: PetEvent, pet id: UUID) {
@@ -205,6 +481,7 @@ final class AppModel {
             evolutionOptions[id] = nil
             save()
             refreshEvolutionOptions()
+            petsChanged()
         }
     }
 
@@ -227,7 +504,12 @@ final class AppModel {
         guard canFeed else { return }
         let kind: ItemKind = Bool.random() ? .apple : .oranBerry
         let mouse = NSEvent.mouseLocation
-        playground.dropTreat(kind, at: CGPoint(x: mouse.x + 24, y: mouse.y))
+        let world = worldMonitor.world
+        if world.isOnAnyScreen(mouse, margin: 0) {
+            playground.dropTreat(kind, at: CGPoint(x: mouse.x + 24, y: mouse.y))
+        } else if let spot = playground.randomFeedingSpot(world: world) {
+            playground.dropTreat(kind, at: spot)  // the pointer is on a screen pets don't use
+        }
     }
 
     func handle(_ event: ItemEvent, item id: UUID) {
@@ -273,7 +555,7 @@ final class AppModel {
     private func recordInPokedex(_ pet: PetRecord) {
         Pokedex.recordPet(path: pet.spritePath, displayName: pet.displayName, isShiny: pet.isShiny,
                           into: &settings.pokedex, at: Date())
-        pokedexWindow.refreshIfVisible()
+        pokedexWindowIfOpened?.refreshIfVisible()
     }
 
     /// Species keys (e.g. `0025`) of the current pets.
@@ -321,26 +603,31 @@ final class AppModel {
             guard settings.pets.count < Playground.maxOwnPets, let sprites = wildSprites[record.path] else { continue }
             let name = record.isShiny ? "\(record.displayName) (Shiny)" : record.displayName
             let pet = PetRecord(spritePath: record.path, displayName: name, position: record.position,
-                                isShiny: record.isShiny)
+                                isShiny: record.isShiny, joined: Date())
             settings.pets.append(pet)
             recordInPokedex(pet)
             attach(pet, sprites: sprites)
         }
         save()
         refreshEvolutionOptions()
+        petsChanged()
     }
 
     // MARK: - Settings
 
+    /// The player's Show / Hide. Showing also overrides auto-hide until another app comes to the front.
     func setHidden(_ hidden: Bool) {
         settings.hidden = hidden
-        for record in settings.pets {
-            if hidden { petViews[record.id]?.hide() } else { petViews[record.id]?.show() }
+        if !hidden && autoHidden {
+            autoHideState.userShowed(frontmost: worldMonitor.frontmostBundleID)
+            autoHidden = false
         }
-        for view in itemViews.values {
-            if hidden { view.hide() } else { view.show() }
-        }
+        applyVisibility()
         save()
+    }
+
+    func toggleHidden() {
+        setHidden(!petsHidden)
     }
 
     func setCursorMode(_ mode: CursorMode) {
@@ -390,10 +677,15 @@ final class AppModel {
         settings = .default
         playground = Playground(seed: .random(in: .min ... .max), scale: CGFloat(settings.scale))
         settings.save(to: .standard)
+        autoHidden = false
+        autoHideState = AutoHideState()
+        applyPreferences()
+        petsChanged()
+        preferencesWindowIfOpened?.refreshIfVisible()
         let store = self.store
         Task {
             await store.clearDownloads()
-            pokedexWindow.refreshIfVisible()
+            pokedexWindowIfOpened?.refreshIfVisible()
             showStarterChoice()
         }
     }
@@ -434,7 +726,7 @@ final class AppModel {
             ?? world.spawnPoint(fraction: .random(in: 0.2...0.8))
         playground.addPet(id: record.id, role: .own, metrics: PetMetrics(sprites: sprites), at: start)
         let view = PetController(id: record.id, sprites: sprites, model: self, interactive: true)
-        if !settings.hidden { view.show() }
+        if !petsHidden { view.show() }
         petViews[record.id] = view
     }
 
@@ -537,6 +829,18 @@ final class AppModel {
             playground.timeOfDay = TimeOfDay(hour: Calendar.current.component(.hour, from: Date()))
             playground.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         }
+        if now - lastAutoHideCheck >= 0.2 {  // 5 Hz, like the world updates
+            lastAutoHideCheck = now
+            updateAutoHide()
+        }
+        if now - lastPowerCheck >= 5 {  // plugged in or unplugged
+            lastPowerCheck = now
+            let battery = Self.isOnBattery()
+            if battery != onBattery {
+                onBattery = battery
+                updatePacing()
+            }
+        }
         if tickCount % 6 == 1 {  // 10 Hz is plenty for noticing the user
             playground.setUserIdle(CGEventSource.secondsSinceLastEventType(.combinedSessionState,
                                                                            eventType: CGEventType(rawValue: ~0)!))
@@ -578,6 +882,7 @@ final class AppModel {
                 if let index = settings.pets.firstIndex(where: { $0.id == id }) {
                     settings.pets[index].treatsEaten += 1
                     friendshipsChanged = true  // save the count too
+                    petsChanged()
                 }
             case .roundEnded:
                 showResults()
@@ -598,7 +903,7 @@ final class AppModel {
             return
         }
         Pokedex.record(results.catches, into: &settings.pokedex, at: Date())
-        pokedexWindow.refreshIfVisible()  // right after the round, even before the results are closed
+        pokedexWindowIfOpened?.refreshIfVisible()  // right after the round, even before the results are closed
         let previousBest = settings.bestCatchScore
         let isNewBest = results.score > previousBest
         if isNewBest {
@@ -638,7 +943,7 @@ final class AppModel {
         }
         for id in treats where itemViews[id] == nil {
             let view = ItemController(id: id, model: self)
-            if settings.hidden { view.hide() }
+            if petsHidden { view.hide() }
             itemViews[id] = view
         }
     }

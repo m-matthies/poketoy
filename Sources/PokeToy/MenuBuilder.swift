@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import PokeToyCore
 
 /// Menu item that runs a closure; `enabled` (if given) decides whether it can be chosen.
@@ -32,6 +33,47 @@ final class ActionItem: NSMenuItem, NSMenuItemValidation {
     }
 }
 
+extension Shortcut {
+    /// The modifier flags for a menu item's key equivalent.
+    var menuModifiers: NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        return flags
+    }
+
+    /// The key equivalent menus use for this key — also for Space, arrows, F-keys and the like.
+    var menuKey: String? {
+        if let key = keyEquivalent { return key }
+        let special: [Int: Int] = [
+            kVK_LeftArrow: NSLeftArrowFunctionKey, kVK_RightArrow: NSRightArrowFunctionKey,
+            kVK_UpArrow: NSUpArrowFunctionKey, kVK_DownArrow: NSDownArrowFunctionKey,
+            kVK_Home: NSHomeFunctionKey, kVK_End: NSEndFunctionKey, kVK_PageUp: NSPageUpFunctionKey,
+            kVK_PageDown: NSPageDownFunctionKey, kVK_ForwardDelete: NSDeleteFunctionKey,
+            kVK_Space: 0x20, kVK_Return: 0x0D, kVK_Tab: 0x09, kVK_Delete: 0x08, kVK_Escape: 0x1B,
+        ]
+        let functionKeys = [kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10,
+                            kVK_F11, kVK_F12, kVK_F13, kVK_F14, kVK_F15, kVK_F16, kVK_F17, kVK_F18, kVK_F19, kVK_F20]
+        let code = Int(keyCode)
+        let scalar = special[code] ?? functionKeys.firstIndex(of: code).map { NSF1FunctionKey + $0 }
+        return scalar.flatMap(UnicodeScalar.init).map { String(Character($0)) }
+    }
+}
+
+extension NSMenuItem {
+    /// Shows a global shortcut next to the item (it works from any app).
+    func show(_ shortcut: Shortcut?) {
+        guard let shortcut, let key = shortcut.menuKey else {
+            keyEquivalent = ""
+            return
+        }
+        keyEquivalent = key
+        keyEquivalentModifierMask = shortcut.menuModifiers
+    }
+}
+
 extension CursorMode {
     var title: String {
         switch self {
@@ -54,19 +96,13 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
     func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
-        populate(menu, includeQuit: true)
-        return menu
-    }
-
-    func makeDockMenu() -> NSMenu {
-        let menu = NSMenu()
-        populate(menu, includeQuit: false)  // the Dock adds its own Quit
+        populate(menu)
         return menu
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         model.refreshEvolutionOptions()
-        populate(menu, includeQuit: true)
+        populate(menu)
     }
 
     func makeMainMenu() -> NSMenu {
@@ -79,19 +115,26 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(ActionItem("Choose Your First Pokémon…", enabled: { [unowned model] in model.needsStarter }) {
             [unowned model] in model.showStarterChoice()
         })
-        let feed = ActionItem("Feed", key: "b", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
-        feed.keyEquivalentModifierMask = [.control, .option]
+        let feed = ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
+        feed.show(model.shortcut(for: .feed))
         appMenu.addItem(feed)
         appMenu.addItem(ActionItem("Play Fetch", key: "j", enabled: { [unowned model] in model.canPlayFetch }) {
             [unowned model] in model.playFetch()
         })
-        appMenu.addItem(ActionItem("Start Catch Game", key: "g", dynamicTitle: { [unowned model] in
+        let game = ActionItem("Start Catch Game", dynamicTitle: { [unowned model] in
             model.isGameRunning ? "End Catch Game" : "Start Catch Game"
         }) { [unowned model] in
             if model.isGameRunning { model.endCatchGame() } else { model.startCatchGame() }
-        })
+        }
+        game.show(model.shortcut(for: .catchGame))
+        appMenu.addItem(game)
         appMenu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
-        appMenu.addItem(ActionItem("Show/Hide Pets") { [unowned model] in model.setHidden(!model.settings.hidden) })
+        appMenu.addItem(ActionItem("Pets…") { [unowned model] in model.showPets() })
+        let showHide = ActionItem("Show/Hide Pets") { [unowned model] in model.toggleHidden() }
+        showHide.show(model.shortcut(for: .showHide))
+        appMenu.addItem(showHide)
+        appMenu.addItem(.separator())
+        appMenu.addItem(ActionItem("Preferences…", key: ",") { [unowned model] in model.showPreferences() })
         appMenu.addItem(.separator())
         appMenu.addItem(ActionItem("Reset Game…", enabled: { [unowned model] in model.canReset }) {
             [unowned model] in model.confirmReset()
@@ -100,7 +143,12 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         appMenu.addItem(withTitle: "Quit PokeToy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         addSubmenu(appMenu, to: main)
 
+        // Menu-bar-only apps don't show this menu, but its key equivalents still work in text fields.
         let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
         edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
@@ -113,22 +161,25 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         return main
     }
 
-    private func populate(_ menu: NSMenu, includeQuit: Bool) {
+    /// The paw menu — with no Dock icon and no visible app menu, everything is reachable from here.
+    private func populate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let hidden = model.settings.hidden
-        menu.addItem(ActionItem(hidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.setHidden(!hidden) })
+        let showHide = ActionItem(model.petsHidden ? "Show Pets" : "Hide Pets") { [unowned model] in model.toggleHidden() }
+        showHide.show(model.shortcut(for: .showHide))
+        menu.addItem(showHide)
         if model.needsStarter {
             menu.addItem(ActionItem("Choose Your First Pokémon…") { [unowned model] in model.showStarterChoice() })
         }
-        menu.addItem(ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() })
+        let feed = ActionItem("Feed", enabled: { [unowned model] in model.canFeed }) { [unowned model] in model.feed() }
+        feed.show(model.shortcut(for: .feed))
+        menu.addItem(feed)
         menu.addItem(ActionItem("Play Fetch", enabled: { [unowned model] in model.canPlayFetch }) {
             [unowned model] in model.playFetch()
         })
-        if model.isGameRunning {
-            menu.addItem(ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() })
-        } else {
-            menu.addItem(ActionItem("Start Catch Game") { [unowned model] in model.startCatchGame() })
-        }
+        let game = model.isGameRunning ? ActionItem("End Catch Game") { [unowned model] in model.endCatchGame() }
+            : ActionItem("Start Catch Game") { [unowned model] in model.startCatchGame() }
+        game.show(model.shortcut(for: .catchGame))
+        menu.addItem(game)
         menu.addItem(ActionItem("Pokédex…") { [unowned model] in model.showPokedex() })
         menu.addItem(.separator())
 
@@ -139,7 +190,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         } else {
             menu.addItem(NSMenuItem(title: "Pets", action: nil, keyEquivalent: ""))
             for pet in pets {
-                let item = NSMenuItem(title: pet.displayName, action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: pet.name, action: nil, keyEquivalent: "")
                 let submenu = NSMenu()
                 if let friend = model.bestFriendName(of: pet.id) {
                     submenu.addItem(NSMenuItem(title: "Best friend: \(friend)", action: nil, keyEquivalent: ""))
@@ -162,7 +213,7 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
                 case .none:
                     break
                 }
-                submenu.addItem(ActionItem("Release") { [unowned model] in model.removePet(pet.id) })
+                submenu.addItem(ActionItem("Release…") { [unowned model] in model.confirmRelease(pet.id) })
                 item.submenu = submenu
                 menu.addItem(item)
             }
@@ -186,14 +237,18 @@ final class MenuBuilder: NSObject, NSMenuDelegate {
         addSubmenu(sizeMenu, titled: "Size", to: menu)
 
         menu.addItem(.separator())
+        menu.addItem(ActionItem("Pets…") { [unowned model] in model.showPets() })
+        menu.addItem(ActionItem("Preferences…") { [unowned model] in model.showPreferences() })
         menu.addItem(ActionItem("Reset Game…", enabled: { [unowned model] in model.canReset }) {
             [unowned model] in model.confirmReset()
         })
 
-        if includeQuit {
-            menu.addItem(.separator())
-            menu.addItem(ActionItem("Quit PokeToy") { NSApp.terminate(nil) })
-        }
+        menu.addItem(.separator())
+        menu.addItem(ActionItem("About PokeToy") {
+            NSApp.activate()
+            NSApp.orderFrontStandardAboutPanel(nil)
+        })
+        menu.addItem(ActionItem("Quit PokeToy") { NSApp.terminate(nil) })
     }
 
     private func addSubmenu(_ submenu: NSMenu, titled title: String? = nil, to menu: NSMenu) {

@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
     private var menus: MenuBuilder!
     private var statusItem: NSStatusItem?
-    private var feedHotKey: GlobalHotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
@@ -19,19 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menus.makeStatusMenu()
         statusItem = item
 
+        // The menus show the configurable global shortcuts, so they're rebuilt when those change.
+        model.onMenusChanged = { [unowned self] in NSApp.mainMenu = self.menus.makeMainMenu() }
         model.start()
-
-        // ⌃⌥B feeds from any app.
-        feedHotKey = GlobalHotKey(keyCode: kVK_ANSI_B, modifiers: controlKey | optionKey) { [unowned model] in model.feed() }
     }
 
-    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        menus.makeDockMenu()
-    }
-
-    /// Clicking the Dock icon shows hidden pets, else the starter choice (if still open) or the Pokédex.
+    /// Opening the app again (e.g. from Finder) shows hidden pets, else the starter choice (if still open) or the Pokédex.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if model.settings.hidden {
+        if model.petsHidden {
             model.setHidden(false)
         } else if model.needsStarter {
             model.showStarterChoice()
