@@ -80,9 +80,12 @@ extension Playground {
                 fleeBoost.remove(id)
             }
             let x = pets[i].body.position.x
-            guard pets[i].leaving, (pets[i].brain.script?.priority ?? 0) < 3,
-                  let screen = world.screens.first(where: { $0.frame.minX <= x && x <= $0.frame.maxX }) else { continue }
-            let exit = x - screen.frame.minX < screen.frame.maxX - x ? screen.frame.minX - 200 : screen.frame.maxX + 200
+            if pets[i].leaving && pets[i].exitX == nil, let lo = world.screens.map(\.frame.minX).min(),
+               let hi = world.screens.map(\.frame.maxX).max() {
+                // Head for the outer edge of all screens, so side-by-side displays can't bounce it back and forth.
+                pets[i].exitX = x - lo < hi - x ? lo - 200 : hi + 200
+            }
+            guard pets[i].leaving, let exit = pets[i].exitX, (pets[i].brain.script?.priority ?? 0) < 3 else { continue }
             pets[i].perform(Script(anim: .walk, moveTo: exit, speed: PetBrain.walkSpeed * 1.6 * 1.5, end: .arrived, priority: 3))
         }
     }
@@ -98,6 +101,8 @@ extension Playground {
             }) else { continue }
             let outcome = game?.rollCatch() ?? (caught: false, wobbles: 1)
             game?.recordHit()
+            // Never let the ball start below the wild's feet, or it could fall past the floor.
+            items[b].body.position.y = max(items[b].body.position.y, pets[w].body.position.y)
             pets[w].visible = false
             pets[w].body.velocity = .zero
             items[b].body.velocity = .zero
@@ -162,8 +167,9 @@ extension Playground {
         for capture in pending { resolveCapture(ball: capture.ball, pet: capture.pet, caught: capture.caught) }
         for i in items.indices where items[i].state == .flying { items[i].state = .fading(remaining: 0.5) }
         for i in pets.indices where pets[i].role == .wild { pets[i].leaving = true }
-        for i in pets.indices where pets[i].role == .own && (pets[i].brain.script?.priority ?? 0) >= 3 {
-            pets[i].endScript()
+        for i in pets.indices where pets[i].role == .own {
+            if (pets[i].brain.script?.priority ?? 0) >= 3 { pets[i].endScript() }
+            pets[i].brain.noteInteraction()  // watching the round counts as company: no nap straight after
         }
         if let game { lastResults = CatchResults(score: game.score, catches: game.catches) }
         game = nil

@@ -134,4 +134,44 @@ import Testing
         let events = play(&playground, seconds: 1)
         #expect(!events.contains { if case .ballHit = $0 { return true }; return false })
     }
+
+    @Test func wildPokemonLeaveEvenWithTwoScreensSideBySide() {
+        let left = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                              visibleFrame: CGRect(x: 0, y: 50, width: 1000, height: 725))
+        let right = ScreenInfo(frame: CGRect(x: 1000, y: 0, width: 1000, height: 800),
+                               visibleFrame: CGRect(x: 1000, y: 0, width: 1000, height: 775))
+        let world = World.build(screens: [left, right], windows: [], primaryScreenHeight: 800)
+        var playground = Playground(seed: 1, scale: 1)
+        let id = playground.addPet(role: .wild, metrics: .uniform(), at: CGPoint(x: 990, y: 51))
+        let result = playUntil(&playground, seconds: 30, world: world) { _, events in
+            events.contains(.wildRemoved(petID: id))
+        }
+        #expect(result.met)
+    }
+
+    @Test func aBallDroppedAtAWildsFeetStillLands() {
+        let screen = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1000, height: 800),
+                                visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 775))
+        let world = World.build(screens: [screen], windows: [], primaryScreenHeight: 800)
+        var playground = Playground(seed: 1, scale: 1)
+        playground.startGame(roster: [spec], seed: 3)
+        playground.game!.catchChance = 1
+        playUntil(&playground, seconds: 6, world: world) { p, _ in wild(p)?.body.isGrounded == true }
+        let target = wild(playground)!
+        playground.throwBall(from: CGPoint(x: target.body.position.x, y: target.body.position.y - 5), velocity: .zero)
+        let result = playUntil(&playground, seconds: 4, world: world) { _, events in
+            events.contains(.caught(petID: target.id))
+        }
+        #expect(result.met)
+    }
+
+    @Test func petsAreNotSleepyRightAfterARound() {
+        var (playground, ids) = started()
+        play(&playground, seconds: 63.2)
+        #expect(playground.game == nil)
+        for _ in 0..<(30 * 60) {
+            play(&playground, seconds: 1.0 / 60)
+            #expect(playground.pet(ids[0])?.brain.isSleeping == false)
+        }
+    }
 }

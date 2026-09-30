@@ -227,7 +227,9 @@ final class AppModel {
     }
 
     private func loadRoster() async -> [WildSpec] {
-        let catalog = (try? await store.catalog()) ?? []
+        let store = self.store
+        // Keep loading short: the overlay captures the mouse meanwhile.
+        let catalog = (try? await withDeadline(seconds: 3) { try await store.catalog() }) ?? []
         let complete = catalog.filter(\.isComplete)
         let pool = complete.isEmpty ? catalog : complete
         var loaded = await loadWild(Array(pool.shuffled().prefix(8)))
@@ -251,7 +253,7 @@ final class AppModel {
         return await withTaskGroup(of: LoadedWild?.self) { group in
             for entry in entries {
                 group.addTask {
-                    guard let directory = try? await store.spriteDirectory(for: entry.path, timeout: 10),
+                    guard let directory = try? await store.spriteDirectory(for: entry.path, timeout: 3.5),
                           let sprites = try? SpriteSet(directory: directory) else { return nil }
                     return LoadedWild(entry: entry, sprites: sprites)
                 }

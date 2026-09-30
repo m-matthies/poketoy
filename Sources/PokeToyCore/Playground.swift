@@ -19,6 +19,8 @@ public struct PetActor: Identifiable, Sendable {
     var poseToken = -1
     var lifetime: Double = .infinity
     var leaving = false
+    /// Where a leaving wild Pokémon walks to: just past the outer edge of all screens, decided once.
+    var exitX: CGFloat?
     var wasSleeping = false
 
     init(id: UUID, role: PetRole, metrics: PetMetrics, brain: PetBrain, body: Body, scale: CGFloat) {

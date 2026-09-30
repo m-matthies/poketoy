@@ -210,6 +210,11 @@ public struct PetBrain: Sendable {
         state = .scripted(script, elapsed: elapsed)
     }
 
+    /// Resets the "left alone" timer that leads to sleep.
+    public mutating func noteInteraction() {
+        sinceInteraction = 0
+    }
+
     public mutating func endScript(body: inout Body) {
         guard case .scripted = state else { return }
         enterIdle(&body)
