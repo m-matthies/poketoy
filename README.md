@@ -20,7 +20,7 @@ Copy `build/PokeToy.app` to `/Applications` to keep it.
 - Pets wander along the Dock, the bottom of the screen and the tops of your windows, nap when ignored and wake up on their own.
 - Pets never walk through each other: they hop over, turn back, or start playing. Pets that meet greet each other, play tag or play-fight. Pairs that play a lot become **friends** and then **best friends**,
   who seek each other out and nap side by side (Pets → *name* shows a pet's best friend).
-- **Feed** (⌘F) drops an apple or Oran Berry above the cursor (or above the nearest pet if none can reach it); the nearest pet runs
+- **Feed** (⌘B) drops an apple or Oran Berry above the cursor (or above the nearest pet if none can reach it); the nearest pet runs
   over to eat it. Treats can be dragged and thrown too; uneaten ones spoil after 90 seconds.
 - **Start Catch Game** (⌘G): a 60-second round where wild Pokémon run across the screen. Press, flick and release to throw
   Poké Balls. Hits score 25, catches 100. Afterwards, pick which catches to keep as pets. Esc or the **End** button ends

@@ -31,47 +31,77 @@ extension Playground {
         return CGPoint(x: cursor.x, y: top(cursorScreen))
     }
 
-    /// Free own pets head for grounded treats; the first to arrive eats, latecomers are sad.
+    /// Pets and treats are paired closest-first (one pet per treat) and each pet heads for its treat;
+    /// the pet that reaches it eats it, and pets nearby who could have gone for it look sad.
     mutating func feedingRules(world: World) {
         guard game == nil else { return }
-        treatTargets = treatTargets.filter { petID, treatID in
-            items.contains { $0.id == treatID && $0.state == .free } && pets.contains { $0.id == petID }
+        let treats = items.indices.filter {
+            items[$0].kind.isTreat && items[$0].state == .free && items[$0].body.isGrounded
         }
-        for t in items.indices where items[t].kind.isTreat && items[t].state == .free {
-            guard let surfaceID = items[t].body.surfaceID else { continue }
-            let treat = items[t]
-            if let eater = pets.indices.first(where: { i in
-                pets[i].role == .own && treatTargets[pets[i].id] == treat.id && pets[i].body.surfaceID == surfaceID
-                    && abs(pets[i].body.position.x - treat.body.position.x) <= Self.eatDistance
-            }) {
-                eat(treat: t, by: eater)
-                return  // item indices changed; the rest waits for the next tick
-            }
-            for i in pets.indices where isEligibleForTreat(i, treat: treat.id) {
-                let pet = pets[i]
-                guard abs(pet.body.position.x - treat.body.position.x) <= Self.treatSightRange else { continue }
-                if treatTargets[pet.id] == treat.id, pet.brain.script != nil {
-                    pets[i].brain.updateScriptTarget(treat.body.position.x)
-                } else if pet.body.surfaceID == surfaceID {
-                    let walk = Script(anim: .walk, moveTo: treat.body.position.x, speed: PetBrain.walkSpeed * 1.2,
-                                      end: .arrived, priority: 1)
-                    if pets[i].perform(walk) { treatTargets[pet.id] = treat.id }
+        treatTargets = treatTargets.filter { petID, treatID in
+            treats.contains { items[$0].id == treatID } && pets.contains { $0.id == petID }
+        }
+
+        for (petID, treatID) in treatTargets {
+            guard let i = index(of: petID), let t = itemIndex(of: treatID), pets[i].body.isGrounded,
+                  pets[i].body.surfaceID == items[t].body.surfaceID,
+                  abs(pets[i].body.position.x - items[t].body.position.x) <= Self.eatDistance else { continue }
+            eat(treat: t, by: i)
+            return  // item indices changed; the rest waits for the next tick
+        }
+
+        // Closest pet–treat pairs first, so every pet heads for its nearest free treat and no two chase the same one.
+        var pairs: [(pet: Int, treat: Int, distance: CGFloat, jumpTo: Surface?)] = []
+        for i in pets.indices where isEligibleForTreat(i) {
+            let pet = pets[i]
+            for t in treats {
+                let treat = items[t]
+                let dx = abs(pet.body.position.x - treat.body.position.x)
+                guard dx <= Self.treatSightRange, let surfaceID = treat.body.surfaceID else { continue }
+                let distance = hypot(dx, pet.body.position.y - treat.body.position.y)
+                if pet.body.surfaceID == surfaceID {
+                    pairs.append((i, t, distance, nil))
                 } else if let surface = world.surface(id: surfaceID, containingX: treat.body.position.x),
                           world.reachableSurfaces(from: pet.body.position, maxRise: PetBrain.maxJumpRise,
                                                   maxReach: PetBrain.maxJumpReach, minWidth: 0).contains(surface) {
-                    if pets[i].jump(to: surface, x: treat.body.position.x) { treatTargets[pet.id] = treat.id }
+                    pairs.append((i, t, distance, surface))
                 }
             }
         }
+        pairs.sort { $0.distance < $1.distance }
+
+        var assignment: [UUID: UUID] = [:]
+        var busyPets = Set<Int>(), takenTreats = Set<Int>()
+        for pair in pairs where !busyPets.contains(pair.pet) && !takenTreats.contains(pair.treat) {
+            busyPets.insert(pair.pet)
+            takenTreats.insert(pair.treat)
+            let i = pair.pet, treat = items[pair.treat], petID = pets[i].id
+            assignment[petID] = treat.id
+            if treatTargets[petID] == treat.id, pets[i].brain.script != nil {
+                pets[i].brain.updateScriptTarget(treat.body.position.x)
+                continue
+            }
+            if pets[i].brain.script?.priority == 1 { pets[i].endScript() }  // switch to this treat
+            if let surface = pair.jumpTo {
+                pets[i].jump(to: surface, x: treat.body.position.x)
+            } else {
+                pets[i].perform(Script(anim: .walk, moveTo: treat.body.position.x, speed: PetBrain.walkSpeed * 1.2,
+                                       end: .arrived, priority: 1))
+            }
+        }
+        // Pets whose treat went to someone closer stop chasing it.
+        for (petID, _) in treatTargets where assignment[petID] == nil {
+            if let i = index(of: petID), pets[i].brain.script?.priority == 1, pets[i].brain.script?.anim == .walk {
+                pets[i].endScript()
+            }
+        }
+        treatTargets = assignment
     }
 
-    private func isEligibleForTreat(_ i: Int, treat: UUID) -> Bool {
+    private func isEligibleForTreat(_ i: Int) -> Bool {
         let pet = pets[i]
         guard pet.role == .own, pet.visible, pet.body.isGrounded, !inMoment(pet.id) else { return false }
-        if let target = treatTargets[pet.id], target != treat { return false }  // already after another treat
-        if pet.brain.isFree { return true }
-        if let script = pet.brain.script, script.priority == 1, treatTargets[pet.id] == treat { return true }
-        return false
+        return pet.brain.isFree || pet.brain.script?.priority == 1
     }
 
     mutating func eat(treat t: Int, by eater: Int) {
@@ -80,7 +110,10 @@ extension Playground {
         pets[eater].endScript()
         let thanks = Script(anim: .greet, hearts: 1, end: .animationFinished, priority: 2)
         pets[eater].perform(Script(anim: .eat, end: .after(2.5), priority: 2, then: .script(thanks)))
-        for i in pets.indices where pets[i].id != eaterID && treatTargets[pets[i].id] == treat.id {
+        // Pets nearby that could have gone for it (and aren't after another treat) are sad.
+        for i in pets.indices where pets[i].id != eaterID && isEligibleForTreat(i)
+            && (treatTargets[pets[i].id] ?? treat.id) == treat.id
+            && abs(pets[i].body.position.x - treat.body.position.x) <= Self.treatSightRange {
             let facing: Direction = pets[i].body.position.x < treat.body.position.x ? .right : .left
             pets[i].perform(Script(anim: .sad, facing: facing, end: .animationFinished, priority: 2))
         }

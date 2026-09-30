@@ -98,7 +98,7 @@ Pain as available).
 
 ## Feeding
 
-- **Feed** (menu bar menu, Dock menu, main menu ⌘F) drops a random treat (apple or
+- **Feed** (menu bar menu, Dock menu, main menu ⌘B) drops a random treat (apple or
   Oran Berry) from the top of the screen under the cursor, at the cursor's x.
   At most 10 treats exist; Feed is disabled at the cap.
 - Each tick, for each grounded, free treat, every *eligible* own pet goes for it:
@@ -335,3 +335,13 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
 - A pet running a script (treat, friend, tag…) always hops when its goal is beyond the
   other pet and the landing fits; otherwise it stops right there (its walk "arrives").
 - Tag counts as caught when the chaser is within both half-widths plus 10 pt.
+
+### Feeding: closest treat, one pet per treat (revised)
+
+- Each tick, eligible pets and reachable treats are paired closest-first; each pet chases at
+  most one treat and each treat has at most one chaser, so pets go for their nearest treat
+  (not the first one dropped) and never race each other for the same one. Pets switch when a
+  closer treat appears or someone closer takes theirs.
+- When a treat is eaten, other free pets within sight of it that weren't after another treat
+  look sad.
+- Feed's shortcut is ⌘B (⌘F is the system Find shortcut).

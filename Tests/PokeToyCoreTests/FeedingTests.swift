@@ -125,4 +125,39 @@ import Testing
         play(&playground, seconds: 10, world: world)
         #expect(playground.items.count == 1)
     }
+
+    @Test func petsGoForTheClosestTreatNotTheFirstDropped() {
+        var (playground, ids) = makePlayground([300])
+        let far = playground.dropTreat(.apple, at: CGPoint(x: 800, y: 60))!
+        let near = playground.dropTreat(.oranBerry, at: CGPoint(x: 400, y: 60))!
+        let result = playUntil(&playground, seconds: 10) { _, events in eaten(events) != nil }
+        #expect(eaten(result.events) == ids[0])
+        #expect(playground.items.map(\.id) == [far])
+        #expect(!playground.items.contains { $0.id == near })
+    }
+
+    @Test func twoPetsSplitTwoTreatsWithoutClashing() {
+        var (playground, ids) = makePlayground([300, 700])
+        playground.dropTreat(.apple, at: CGPoint(x: 450, y: 60))
+        playground.dropTreat(.oranBerry, at: CGPoint(x: 550, y: 60))
+        var eaters: [UUID] = []
+        for _ in 0..<(8 * 60) {
+            for event in play(&playground, seconds: 1.0 / 60) {
+                if case .treatEaten(let id) = event { eaters.append(id) }
+            }
+            let a = playground.pet(ids[0])!, b = playground.pet(ids[1])!
+            #expect(abs(a.body.position.x - b.body.position.x) >= a.halfWidth + b.halfWidth - 1)
+        }
+        #expect(Set(eaters) == Set(ids))
+        #expect(eaters.count == 2)
+    }
+
+    @Test func onlyOnePetChasesASingleTreat() {
+        var (playground, _) = makePlayground([250, 600])
+        playground.dropTreat(.apple, at: CGPoint(x: 400, y: 60))
+        for _ in 0..<(4 * 60) {
+            play(&playground, seconds: 1.0 / 60)
+            #expect(playground.treatTargets.count <= 1)
+        }
+    }
 }
