@@ -95,4 +95,35 @@ import Testing
             _ = wild
         }
     }
+
+    @Test func petsSqueezePastWhenThereIsNoRoomToHop() {
+        let world = TestWorld.withShelf  // shelf 300…600
+        var (playground, _) = makePlayground([], world: world)
+        let blocker = playground.addPet(metrics: .uniform(), at: CGPoint(x: 580, y: 251))
+        let walker = playground.addPet(metrics: .uniform(), at: CGPoint(x: 450, y: 251))
+        play(&playground, seconds: 0.1, world: world)
+        let asleep = playground.pets[0].fallAsleep()
+        #expect(asleep)
+        playground.pets[1].perform(Script(anim: .walk, moveTo: 595, end: .arrived, priority: 1))
+        var hopped = false, arrived = false
+        for _ in 0..<(6 * 60) {
+            play(&playground, seconds: 1.0 / 60, world: world)
+            if isHopping(playground.pet(walker)?.brain.state) { hopped = true }
+            if abs((playground.pet(walker)?.body.position.x ?? 0) - 595) <= 2 { arrived = true }
+        }
+        #expect(!hopped)
+        #expect(arrived)
+        #expect(playground.pet(blocker) != nil)
+    }
+
+    @Test func petsStuckBehindAnotherEventuallySqueezePast() {
+        var (playground, ids) = makePlayground([900, 980])
+        let asleep = playground.pets[1].fallAsleep()
+        #expect(asleep)
+        // Following a cursor beyond the sleeper, with no room to land past it at the screen edge.
+        let result = playUntil(&playground, seconds: 15, cursor: CGPoint(x: 995, y: 60), mode: .follow) { p, _ in
+            (p.pet(ids[0])?.body.position.x ?? 0) > 981
+        }
+        #expect(result.met)
+    }
 }

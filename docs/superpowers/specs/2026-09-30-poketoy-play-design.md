@@ -364,3 +364,6 @@ Pokémon beyond cheering, walking between monitors, online leaderboards.
   height; a treat lower down or level (another window, the floor, the next screen's floor) is
   reached by walking off the current surface's edge toward it and continuing from where the
   pet lands. Treats beyond sight range are ignored and eventually spoil.
+- **Passing when absolutely needed:** a pet may walk through another for 1.5 s when (a) it is on
+  its way somewhere past the other pet but there is no room to hop and land beyond it, or (b) it
+  has been blocked three times within 6 s (stuck going back and forth).

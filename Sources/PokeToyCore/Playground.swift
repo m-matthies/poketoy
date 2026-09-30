@@ -165,6 +165,9 @@ public struct Playground: Sendable {
     var strokes: [UUID: StrokeTracker] = [:]
     var clickTimes: [UUID: [Double]] = [:]
     var annoyedUntil: [UUID: Double] = [:]
+    /// Pets allowed to walk through others until the given clock time (only when absolutely needed).
+    var passThrough: [UUID: Double] = [:]
+    var blockTimes: [UUID: [Double]] = [:]
 
     public init(seed: UInt64, scale: CGFloat = 2, friendships: Friendships = Friendships()) {
         rng = SplitMix64(seed: seed)
@@ -223,6 +226,8 @@ public struct Playground: Sendable {
         strokes[id] = nil
         clickTimes[id] = nil
         annoyedUntil[id] = nil
+        passThrough[id] = nil
+        blockTimes[id] = nil
         if wasOwn {
             friendships.remove(id)
             events.append(.friendshipChanged)

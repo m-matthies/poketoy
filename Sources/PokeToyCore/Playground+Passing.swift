@@ -4,6 +4,9 @@ import Foundation
 extension Playground {
     static let playfulChance = 0.3
     static let turnBackDistance: CGFloat = 60
+    static let passThroughTime = 1.5
+    static let stuckBlocks = 3
+    static let stuckWindow = 6.0
 
     /// Pets never walk through each other. A walker that reaches another pet of the same role standing ahead
     /// on its surface hops over it, turns back, or (own pets, now and then) starts playing with it.
@@ -11,7 +14,8 @@ extension Playground {
         for i in pets.indices {
             let walker = pets[i]
             let vx = walker.body.velocity.dx
-            guard walker.visible, vx != 0, let surfaceID = walker.body.surfaceID, walkGoal(of: i) != nil else { continue }
+            guard walker.visible, vx != 0, let surfaceID = walker.body.surfaceID, walkGoal(of: i) != nil,
+                  (passThrough[walker.id] ?? 0) <= clock else { continue }
             let direction: CGFloat = vx > 0 ? 1 : -1
             let ahead = pets.indices.filter { j in
                 j != i && pets[j].visible && pets[j].role == walker.role && pets[j].body.surfaceID == surfaceID
@@ -35,6 +39,15 @@ extension Playground {
     }
 
     private mutating func resolveBlock(walker i: Int, blocker j: Int, direction: CGFloat, world: World) {
+        let id = pets[i].id
+        let recent = (blockTimes[id] ?? []).filter { clock - $0 <= Self.stuckWindow } + [clock]
+        if recent.count >= Self.stuckBlocks {
+            // Stuck going back and forth: squeeze past this once.
+            blockTimes[id] = []
+            passThrough[id] = clock + Self.passThroughTime
+            return
+        }
+        blockTimes[id] = recent
         let scripted = pets[i].brain.script != nil
         if pets[i].role == .own, game == nil, !scripted, pets[j].brain.isFree,
            !inMoment(pets[i].id), !inMoment(pets[j].id), rng.unit() < Self.playfulChance {
@@ -53,7 +66,9 @@ extension Playground {
             return
         }
 
-        if scripted {
+        if scripted && goalIsPast {
+            passThrough[id] = clock + Self.passThroughTime  // on its way and no room to hop: squeeze past
+        } else if scripted {
             pets[i].brain.updateScriptTarget(pets[i].body.position.x)  // stop here; the walk counts as arrived
             pets[i].body.velocity.dx = 0
         } else {
