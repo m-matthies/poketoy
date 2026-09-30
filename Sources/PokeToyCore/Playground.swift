@@ -271,7 +271,9 @@ public struct Playground: Sendable {
     }
 
     /// Rules that react to where things ended up (collisions, Poké Ball hits).
-    mutating func rulesAfterPhysics(dt: Double, world: World) {}
+    mutating func rulesAfterPhysics(dt: Double, world: World) {
+        collisionRules(world: world)
+    }
 
     private mutating func updateBrain(_ i: Int, dt: Double, world: World, cursor: CGPoint, cursorMode: CursorMode) {
         let pet = pets[i]
